@@ -13,8 +13,11 @@ public:
     explicit TaskManager(QObject* parent = nullptr);
 
     void addTask(const Task& task);
+    void removeTask(int index);
+    void toggleCompleted(int index);
     QVector<Task> tasks() const;
     QVector<Task> filterByTag(const QString& tag) const;
+    int completedCount() const;
 
 signals:
     void tasksChanged();
