@@ -15,6 +15,7 @@ public:
     void addTask(const Task& task);
     void removeTask(int index);
     void toggleCompleted(int index);
+    void clearCompleted();
     QVector<Task> tasks() const;
     QVector<Task> filterByTag(const QString& tag) const;
     int completedCount() const;

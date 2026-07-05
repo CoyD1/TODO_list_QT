@@ -33,6 +33,27 @@ void TaskManager::toggleCompleted(int index)
     emit tasksChanged();
 }
 
+void TaskManager::clearCompleted()
+{
+    QVector<Task> remaining;
+
+    for (const Task& task : m_tasks)
+    {
+        if (!task.isCompleted())
+        {
+            remaining.append(task);
+        }
+    }
+
+    if (remaining.size() == m_tasks.size())
+    {
+        return;
+    }
+
+    m_tasks = remaining;
+    emit tasksChanged();
+}
+
 QVector<Task> TaskManager::tasks() const
 {
     return m_tasks;
