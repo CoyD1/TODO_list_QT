@@ -1,7 +1,10 @@
 #include "task.h"
 
+#include <QJsonArray>
+
 Task::Task()
-    : m_priority(TaskPriority::Medium),
+    : m_id(-1),
+    m_priority(TaskPriority::Medium),
     m_completed(false)
 {
 }
@@ -10,12 +13,18 @@ Task::Task(const QString& title,
            const QString& description,
            const QStringList& tags,
            TaskPriority priority)
-    : m_title(title),
+    : m_id(-1),
+    m_title(title),
     m_description(description),
     m_tags(tags),
     m_priority(priority),
     m_completed(false)
 {
+}
+
+int Task::id() const
+{
+    return m_id;
 }
 
 QString Task::title() const
@@ -43,6 +52,11 @@ bool Task::isCompleted() const
     return m_completed;
 }
 
+void Task::setId(int id)
+{
+    m_id = id;
+}
+
 void Task::setTitle(const QString& title)
 {
     m_title = title;
@@ -66,4 +80,41 @@ void Task::setPriority(TaskPriority priority)
 void Task::setCompleted(bool completed)
 {
     m_completed = completed;
+}
+
+QJsonObject Task::toJson() const
+{
+    QJsonObject obj;
+    obj["id"] = m_id;
+    obj["title"] = m_title;
+    obj["description"] = m_description;
+    obj["priority"] = static_cast<int>(m_priority);
+    obj["completed"] = m_completed;
+
+    QJsonArray tagsArray;
+    for (const QString& tag : m_tags)
+    {
+        tagsArray.append(tag);
+    }
+    obj["tags"] = tagsArray;
+
+    return obj;
+}
+
+Task Task::fromJson(const QJsonObject& json)
+{
+    Task task;
+    task.m_id = json["id"].toInt(-1);
+    task.m_title = json["title"].toString();
+    task.m_description = json["description"].toString();
+    task.m_priority = static_cast<TaskPriority>(json["priority"].toInt(1));
+    task.m_completed = json["completed"].toBool();
+
+    const QJsonArray tagsArray = json["tags"].toArray();
+    for (const QJsonValue& val : tagsArray)
+    {
+        task.m_tags.append(val.toString());
+    }
+
+    return task;
 }

@@ -8,8 +8,11 @@
 #include <QComboBox>
 #include <QLabel>
 #include <QCheckBox>
+#include <QSpinBox>
 #include <QPair>
 #include "taskmanager.h"
+#include "taskserver.h"
+#include "networkclient.h"
 
 class MainWindow : public QMainWindow
 {
@@ -21,6 +24,7 @@ public:
 
 private slots:
     void addTask();
+    void editSelectedTask();
     void removeSelectedTask();
     void toggleSelectedTask();
     void applyTagFilter();
@@ -28,13 +32,25 @@ private slots:
     void clearCompletedTasks();
     void updateTaskList();
 
+    void startServer();
+    void stopServer();
+    void connectToServer();
+    void disconnectFromServer();
+    void onConnected();
+    void onDisconnected();
+    void onConnectionError(const QString& error);
+    void onTasksReceived(const QVector<Task>& tasks);
+
 private:
     int selectedTaskIndex() const;
     QVector<QPair<int, Task>> visibleTasks() const;
     static QString priorityText(TaskPriority priority);
     static int priorityWeight(TaskPriority priority);
+    void setClientModeEnabled(bool enabled);
 
     TaskManager* m_taskManager;
+    TaskServer* m_server;
+    NetworkClient* m_client;
 
     QListWidget* m_taskList;
     QLineEdit* m_titleInput;
@@ -45,6 +61,7 @@ private:
     QComboBox* m_priorityBox;
     QComboBox* m_sortBox;
     QPushButton* m_addButton;
+    QPushButton* m_editButton;
     QPushButton* m_removeButton;
     QPushButton* m_toggleButton;
     QPushButton* m_filterButton;
@@ -53,7 +70,19 @@ private:
     QLabel* m_statusLabel;
     QCheckBox* m_hideCompletedBox;
 
+    QSpinBox* m_serverPortInput;
+    QPushButton* m_startServerButton;
+    QPushButton* m_stopServerButton;
+    QLabel* m_serverStatusLabel;
+
+    QLineEdit* m_serverHostInput;
+    QSpinBox* m_clientPortInput;
+    QPushButton* m_connectButton;
+    QPushButton* m_disconnectButton;
+    QLabel* m_connectionStatusLabel;
+
     QString m_activeFilter;
+    bool m_clientMode;
 };
 
 #endif

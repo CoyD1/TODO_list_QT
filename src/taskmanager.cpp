@@ -1,13 +1,16 @@
 #include "taskmanager.h"
 
 TaskManager::TaskManager(QObject* parent)
-    : QObject(parent)
+    : QObject(parent),
+    m_nextId(1)
 {
 }
 
 void TaskManager::addTask(const Task& task)
 {
-    m_tasks.append(task);
+    Task t = task;
+    t.setId(assignId());
+    m_tasks.append(t);
     emit tasksChanged();
 }
 
@@ -54,6 +57,25 @@ void TaskManager::clearCompleted()
     emit tasksChanged();
 }
 
+void TaskManager::updateTask(int index, const Task& task)
+{
+    if (index < 0 || index >= m_tasks.size())
+    {
+        return;
+    }
+
+    Task t = task;
+    t.setId(m_tasks[index].id());
+    m_tasks[index] = t;
+    emit tasksChanged();
+}
+
+void TaskManager::setTasks(const QVector<Task>& tasks)
+{
+    m_tasks = tasks;
+    emit tasksChanged();
+}
+
 QVector<Task> TaskManager::tasks() const
 {
     return m_tasks;
@@ -87,4 +109,22 @@ int TaskManager::completedCount() const
     }
 
     return count;
+}
+
+int TaskManager::taskIndexById(int id) const
+{
+    for (int i = 0; i < m_tasks.size(); ++i)
+    {
+        if (m_tasks[i].id() == id)
+        {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+int TaskManager::assignId()
+{
+    return m_nextId++;
 }

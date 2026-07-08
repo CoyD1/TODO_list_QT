@@ -6,11 +6,19 @@
 #include <QLabel>
 #include <QListWidgetItem>
 #include <QFont>
+#include <QGroupBox>
+#include <QDialog>
+#include <QFormLayout>
+#include <QDialogButtonBox>
+#include <QMessageBox>
 #include <algorithm>
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent),
-    m_taskManager(new TaskManager(this))
+    m_taskManager(new TaskManager(this)),
+    m_server(nullptr),
+    m_client(new NetworkClient(this)),
+    m_clientMode(false)
 {
     setWindowTitle("Network TODO List");
 
@@ -61,9 +69,48 @@ MainWindow::MainWindow(QWidget* parent)
 
     QHBoxLayout* actionLayout = new QHBoxLayout();
     m_toggleButton = new QPushButton("Отметить выполненной", this);
+    m_editButton = new QPushButton("Редактировать", this);
     m_removeButton = new QPushButton("Удалить задачу", this);
     actionLayout->addWidget(m_toggleButton);
+    actionLayout->addWidget(m_editButton);
     actionLayout->addWidget(m_removeButton);
+
+    // --- Server panel ---
+    QGroupBox* serverGroup = new QGroupBox("Сервер", this);
+    QHBoxLayout* serverLayout = new QHBoxLayout(serverGroup);
+    serverLayout->addWidget(new QLabel("Порт:", this));
+    m_serverPortInput = new QSpinBox(this);
+    m_serverPortInput->setRange(1024, 65535);
+    m_serverPortInput->setValue(9999);
+    serverLayout->addWidget(m_serverPortInput);
+    m_startServerButton = new QPushButton("Запустить сервер", this);
+    serverLayout->addWidget(m_startServerButton);
+    m_stopServerButton = new QPushButton("Остановить", this);
+    m_stopServerButton->setEnabled(false);
+    serverLayout->addWidget(m_stopServerButton);
+    m_serverStatusLabel = new QLabel("Сервер не запущен", this);
+    serverLayout->addWidget(m_serverStatusLabel);
+
+    // --- Client panel ---
+    QGroupBox* clientGroup = new QGroupBox("Клиент", this);
+    QHBoxLayout* clientLayout = new QHBoxLayout(clientGroup);
+    clientLayout->addWidget(new QLabel("Хост:", this));
+    m_serverHostInput = new QLineEdit(this);
+    m_serverHostInput->setPlaceholderText("127.0.0.1");
+    m_serverHostInput->setText("127.0.0.1");
+    clientLayout->addWidget(m_serverHostInput);
+    clientLayout->addWidget(new QLabel("Порт:", this));
+    m_clientPortInput = new QSpinBox(this);
+    m_clientPortInput->setRange(1024, 65535);
+    m_clientPortInput->setValue(9999);
+    clientLayout->addWidget(m_clientPortInput);
+    m_connectButton = new QPushButton("Подключиться", this);
+    clientLayout->addWidget(m_connectButton);
+    m_disconnectButton = new QPushButton("Отключиться", this);
+    m_disconnectButton->setEnabled(false);
+    clientLayout->addWidget(m_disconnectButton);
+    m_connectionStatusLabel = new QLabel("Не подключён", this);
+    clientLayout->addWidget(m_connectionStatusLabel);
 
     m_taskList = new QListWidget(this);
 
@@ -78,6 +125,8 @@ MainWindow::MainWindow(QWidget* parent)
     mainLayout->addLayout(filterLayout);
     mainLayout->addLayout(sortLayout);
     mainLayout->addLayout(actionLayout);
+    mainLayout->addWidget(serverGroup);
+    mainLayout->addWidget(clientGroup);
     mainLayout->addWidget(m_taskList);
     mainLayout->addWidget(m_statusLabel);
 
@@ -85,6 +134,8 @@ MainWindow::MainWindow(QWidget* parent)
 
     connect(m_addButton, &QPushButton::clicked,
             this, &MainWindow::addTask);
+    connect(m_editButton, &QPushButton::clicked,
+            this, &MainWindow::editSelectedTask);
     connect(m_removeButton, &QPushButton::clicked,
             this, &MainWindow::removeSelectedTask);
     connect(m_toggleButton, &QPushButton::clicked,
@@ -96,16 +147,35 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_clearCompletedButton, &QPushButton::clicked,
             this, &MainWindow::clearCompletedTasks);
     connect(m_taskList, &QListWidget::itemDoubleClicked,
-            this, &MainWindow::toggleSelectedTask);
+            this, &MainWindow::editSelectedTask);
     connect(m_searchInput, &QLineEdit::textChanged,
             this, &MainWindow::updateTaskList);
     connect(m_sortBox, &QComboBox::currentIndexChanged,
             this, &MainWindow::updateTaskList);
     connect(m_hideCompletedBox, &QCheckBox::toggled,
             this, &MainWindow::updateTaskList);
-
     connect(m_taskManager, &TaskManager::tasksChanged,
             this, &MainWindow::updateTaskList);
+
+    // Server buttons
+    connect(m_startServerButton, &QPushButton::clicked,
+            this, &MainWindow::startServer);
+    connect(m_stopServerButton, &QPushButton::clicked,
+            this, &MainWindow::stopServer);
+
+    // Client buttons
+    connect(m_connectButton, &QPushButton::clicked,
+            this, &MainWindow::connectToServer);
+    connect(m_disconnectButton, &QPushButton::clicked,
+            this, &MainWindow::disconnectFromServer);
+    connect(m_client, &NetworkClient::connected,
+            this, &MainWindow::onConnected);
+    connect(m_client, &NetworkClient::disconnected,
+            this, &MainWindow::onDisconnected);
+    connect(m_client, &NetworkClient::connectionError,
+            this, &MainWindow::onConnectionError);
+    connect(m_client, &NetworkClient::tasksReceived,
+            this, &MainWindow::onTasksReceived);
 
     updateTaskList();
 }
@@ -142,11 +212,88 @@ void MainWindow::addTask()
     }
 
     Task task(title, description, tags, priority);
-    m_taskManager->addTask(task);
+
+    if (m_clientMode)
+    {
+        m_client->sendAddTask(task);
+    }
+    else
+    {
+        m_taskManager->addTask(task);
+    }
 
     m_titleInput->clear();
     m_descriptionInput->clear();
     m_tagsInput->clear();
+}
+
+void MainWindow::editSelectedTask()
+{
+    int index = selectedTaskIndex();
+
+    if (index < 0)
+    {
+        return;
+    }
+
+    const Task& task = m_taskManager->tasks()[index];
+
+    QDialog dialog(this);
+    dialog.setWindowTitle("Редактирование задачи");
+
+    QFormLayout* form = new QFormLayout(&dialog);
+
+    QLineEdit* titleEdit = new QLineEdit(task.title(), &dialog);
+    QLineEdit* descEdit = new QLineEdit(task.description(), &dialog);
+    QLineEdit* tagsEdit = new QLineEdit(task.tags().join(", "), &dialog);
+    QComboBox* priorityEdit = new QComboBox(&dialog);
+    priorityEdit->addItem("Низкий");
+    priorityEdit->addItem("Средний");
+    priorityEdit->addItem("Высокий");
+    priorityEdit->setCurrentIndex(static_cast<int>(task.priority()));
+
+    form->addRow("Название:", titleEdit);
+    form->addRow("Описание:", descEdit);
+    form->addRow("Теги:", tagsEdit);
+    form->addRow("Приоритет:", priorityEdit);
+
+    QDialogButtonBox* buttons = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    form->addRow(buttons);
+
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    if (dialog.exec() != QDialog::Accepted)
+    {
+        return;
+    }
+
+    QString title = titleEdit->text().trimmed();
+    if (title.isEmpty())
+    {
+        return;
+    }
+
+    QStringList tags;
+    for (const QString& tag : tagsEdit->text().split(",", Qt::SkipEmptyParts))
+    {
+        tags.append(tag.trimmed());
+    }
+
+    TaskPriority priority = static_cast<TaskPriority>(priorityEdit->currentIndex());
+    Task updatedTask(title, descEdit->text().trimmed(), tags, priority);
+    updatedTask.setCompleted(task.isCompleted());
+
+    if (m_clientMode)
+    {
+        updatedTask.setId(task.id());
+        m_client->sendEditTask(updatedTask);
+    }
+    else
+    {
+        m_taskManager->updateTask(index, updatedTask);
+    }
 }
 
 void MainWindow::removeSelectedTask()
@@ -158,7 +305,15 @@ void MainWindow::removeSelectedTask()
         return;
     }
 
-    m_taskManager->removeTask(index);
+    if (m_clientMode)
+    {
+        int taskId = m_taskManager->tasks()[index].id();
+        m_client->sendRemoveTask(taskId);
+    }
+    else
+    {
+        m_taskManager->removeTask(index);
+    }
 }
 
 void MainWindow::toggleSelectedTask()
@@ -170,7 +325,15 @@ void MainWindow::toggleSelectedTask()
         return;
     }
 
-    m_taskManager->toggleCompleted(index);
+    if (m_clientMode)
+    {
+        int taskId = m_taskManager->tasks()[index].id();
+        m_client->sendToggleTask(taskId);
+    }
+    else
+    {
+        m_taskManager->toggleCompleted(index);
+    }
 }
 
 void MainWindow::applyTagFilter()
@@ -333,5 +496,109 @@ void MainWindow::updateTaskList()
         statusText += QString(" | Поиск: %1").arg(m_searchInput->text().trimmed());
     }
 
+    if (m_clientMode)
+    {
+        statusText += " | Режим: клиент";
+    }
+
     m_statusLabel->setText(statusText);
+}
+
+// --- Server ---
+
+void MainWindow::startServer()
+{
+    if (m_server)
+    {
+        return;
+    }
+
+    m_server = new TaskServer(m_taskManager, this);
+
+    if (!m_server->start(static_cast<quint16>(m_serverPortInput->value())))
+    {
+        QMessageBox::warning(this, "Ошибка", "Не удалось запустить сервер");
+        delete m_server;
+        m_server = nullptr;
+        return;
+    }
+
+    m_serverStatusLabel->setText("Сервер запущен");
+    m_startServerButton->setEnabled(false);
+    m_stopServerButton->setEnabled(true);
+    m_serverPortInput->setEnabled(false);
+}
+
+void MainWindow::stopServer()
+{
+    if (!m_server)
+    {
+        return;
+    }
+
+    m_server->stop();
+    delete m_server;
+    m_server = nullptr;
+
+    m_serverStatusLabel->setText("Сервер не запущен");
+    m_startServerButton->setEnabled(true);
+    m_stopServerButton->setEnabled(false);
+    m_serverPortInput->setEnabled(true);
+}
+
+// --- Client ---
+
+void MainWindow::connectToServer()
+{
+    QString host = m_serverHostInput->text().trimmed();
+
+    if (host.isEmpty())
+    {
+        host = "127.0.0.1";
+    }
+
+    if (!m_client->connectToServer(host, static_cast<quint16>(m_clientPortInput->value())))
+    {
+        QMessageBox::warning(this, "Ошибка", "Не удалось подключиться к серверу");
+    }
+}
+
+void MainWindow::disconnectFromServer()
+{
+    m_client->disconnectFromServer();
+}
+
+void MainWindow::onConnected()
+{
+    m_connectionStatusLabel->setText("Подключён");
+    m_connectButton->setEnabled(false);
+    m_disconnectButton->setEnabled(true);
+    m_serverHostInput->setEnabled(false);
+    m_clientPortInput->setEnabled(false);
+    setClientModeEnabled(true);
+}
+
+void MainWindow::onDisconnected()
+{
+    m_connectionStatusLabel->setText("Не подключён");
+    m_connectButton->setEnabled(true);
+    m_disconnectButton->setEnabled(false);
+    m_serverHostInput->setEnabled(true);
+    m_clientPortInput->setEnabled(true);
+    setClientModeEnabled(false);
+}
+
+void MainWindow::onConnectionError(const QString& error)
+{
+    QMessageBox::warning(this, "Ошибка подключения", error);
+}
+
+void MainWindow::onTasksReceived(const QVector<Task>& tasks)
+{
+    m_taskManager->setTasks(tasks);
+}
+
+void MainWindow::setClientModeEnabled(bool enabled)
+{
+    m_clientMode = enabled;
 }

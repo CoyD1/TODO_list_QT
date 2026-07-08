@@ -16,15 +16,21 @@ public:
     void removeTask(int index);
     void toggleCompleted(int index);
     void clearCompleted();
+    void updateTask(int index, const Task& task);
+    void setTasks(const QVector<Task>& tasks);
     QVector<Task> tasks() const;
     QVector<Task> filterByTag(const QString& tag) const;
     int completedCount() const;
+    int taskIndexById(int id) const;
 
 signals:
     void tasksChanged();
 
 private:
+    int assignId();
+
     QVector<Task> m_tasks;
+    int m_nextId;
 };
 
 #endif

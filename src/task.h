@@ -3,6 +3,7 @@
 
 #include <QString>
 #include <QStringList>
+#include <QJsonObject>
 
 enum class TaskPriority
 {
@@ -20,19 +21,25 @@ public:
          const QStringList& tags,
          TaskPriority priority);
 
+    int id() const;
     QString title() const;
     QString description() const;
     QStringList tags() const;
     TaskPriority priority() const;
     bool isCompleted() const;
 
+    void setId(int id);
     void setTitle(const QString& title);
     void setDescription(const QString& description);
     void setTags(const QStringList& tags);
     void setPriority(TaskPriority priority);
     void setCompleted(bool completed);
 
+    QJsonObject toJson() const;
+    static Task fromJson(const QJsonObject& json);
+
 private:
+    int m_id;
     QString m_title;
     QString m_description;
     QStringList m_tags;
