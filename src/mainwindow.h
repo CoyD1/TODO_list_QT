@@ -9,6 +9,7 @@
 #include <QLabel>
 #include <QCheckBox>
 #include <QSpinBox>
+#include <QDateEdit>
 #include <QPair>
 #include "taskmanager.h"
 #include "serializer.h"
@@ -65,6 +66,7 @@ private:
     QLineEdit* m_filterInput;
     QLineEdit* m_searchInput;
     QComboBox* m_priorityBox;
+    QDateEdit* m_dueDateInput;
     QComboBox* m_sortBox;
     QPushButton* m_addButton;
     QPushButton* m_editButton;

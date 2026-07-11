@@ -3,6 +3,7 @@
 
 #include <QString>
 #include <QStringList>
+#include <QDate>
 #include <QJsonObject>
 
 enum class TaskPriority
@@ -26,6 +27,7 @@ public:
     QString description() const;
     QStringList tags() const;
     TaskPriority priority() const;
+    QDate dueDate() const;
     bool isCompleted() const;
 
     void setId(int id);
@@ -33,6 +35,7 @@ public:
     void setDescription(const QString& description);
     void setTags(const QStringList& tags);
     void setPriority(TaskPriority priority);
+    void setDueDate(const QDate& date);
     void setCompleted(bool completed);
 
     QJsonObject toJson() const;
@@ -44,6 +47,7 @@ private:
     QString m_description;
     QStringList m_tags;
     TaskPriority m_priority;
+    QDate m_dueDate;
     bool m_completed;
 };
 

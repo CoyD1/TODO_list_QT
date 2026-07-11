@@ -47,6 +47,11 @@ TaskPriority Task::priority() const
     return m_priority;
 }
 
+QDate Task::dueDate() const
+{
+    return m_dueDate;
+}
+
 bool Task::isCompleted() const
 {
     return m_completed;
@@ -77,6 +82,11 @@ void Task::setPriority(TaskPriority priority)
     m_priority = priority;
 }
 
+void Task::setDueDate(const QDate& date)
+{
+    m_dueDate = date;
+}
+
 void Task::setCompleted(bool completed)
 {
     m_completed = completed;
@@ -90,6 +100,11 @@ QJsonObject Task::toJson() const
     obj["description"] = m_description;
     obj["priority"] = static_cast<int>(m_priority);
     obj["completed"] = m_completed;
+
+    if (m_dueDate.isValid())
+    {
+        obj["dueDate"] = m_dueDate.toString(Qt::ISODate);
+    }
 
     QJsonArray tagsArray;
     for (const QString& tag : m_tags)
@@ -109,6 +124,11 @@ Task Task::fromJson(const QJsonObject& json)
     task.m_description = json["description"].toString();
     task.m_priority = static_cast<TaskPriority>(json["priority"].toInt(1));
     task.m_completed = json["completed"].toBool();
+
+    if (json.contains("dueDate"))
+    {
+        task.m_dueDate = QDate::fromString(json["dueDate"].toString(), Qt::ISODate);
+    }
 
     const QJsonArray tagsArray = json["tags"].toArray();
     for (const QJsonValue& val : tagsArray)

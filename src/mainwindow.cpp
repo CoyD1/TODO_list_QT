@@ -15,6 +15,7 @@
 #include <QStandardPaths>
 #include <QDir>
 #include <QFile>
+#include <QDateEdit>
 #include <algorithm>
 
 MainWindow::MainWindow(QWidget* parent)
@@ -25,117 +26,152 @@ MainWindow::MainWindow(QWidget* parent)
     m_clientMode(false)
 {
     setWindowTitle("Network TODO List");
+    resize(800, 700);
 
     QWidget* centralWidget = new QWidget(this);
     QVBoxLayout* mainLayout = new QVBoxLayout(centralWidget);
+    mainLayout->setSpacing(8);
 
-    QLabel* titleLabel = new QLabel("Сетевой TODO-лист", this);
-    mainLayout->addWidget(titleLabel);
+    // ── Новая задача ──
+    QGroupBox* inputGroup = new QGroupBox("Новая задача", this);
+    QFormLayout* inputLayout = new QFormLayout(inputGroup);
 
     m_titleInput = new QLineEdit(this);
     m_titleInput->setPlaceholderText("Название задачи");
+    inputLayout->addRow("Название:", m_titleInput);
 
     m_descriptionInput = new QLineEdit(this);
     m_descriptionInput->setPlaceholderText("Описание задачи");
+    inputLayout->addRow("Описание:", m_descriptionInput);
 
     m_tagsInput = new QLineEdit(this);
-    m_tagsInput->setPlaceholderText("Теги через запятую, например: учеба, срочно");
+    m_tagsInput->setPlaceholderText("учеба, срочно, работа");
+    inputLayout->addRow("Теги:", m_tagsInput);
 
+    QHBoxLayout* rowLayout = new QHBoxLayout();
     m_priorityBox = new QComboBox(this);
     m_priorityBox->addItem("Низкий");
     m_priorityBox->addItem("Средний");
     m_priorityBox->addItem("Высокий");
+    rowLayout->addWidget(new QLabel("Приоритет:"));
+    rowLayout->addWidget(m_priorityBox);
+    rowLayout->addSpacing(16);
+    rowLayout->addWidget(new QLabel("Срок:"));
+    m_dueDateInput = new QDateEdit(this);
+    m_dueDateInput->setCalendarPopup(true);
+    m_dueDateInput->setDate(QDate::currentDate());
+    rowLayout->addWidget(m_dueDateInput);
+    rowLayout->addStretch();
+    inputLayout->addRow("", rowLayout);
 
     m_addButton = new QPushButton("Добавить задачу", this);
+    inputLayout->addRow("", m_addButton);
+
+    mainLayout->addWidget(inputGroup);
+
+    // ── Поиск и фильтры ──
+    QGroupBox* filterGroup = new QGroupBox("Поиск и фильтры", this);
+    QVBoxLayout* filterGroupLayout = new QVBoxLayout(filterGroup);
 
     m_searchInput = new QLineEdit(this);
-    m_searchInput->setPlaceholderText("Поиск по названию");
+    m_searchInput->setPlaceholderText("Поиск по названию...");
+    filterGroupLayout->addWidget(m_searchInput);
 
-    QHBoxLayout* filterLayout = new QHBoxLayout();
+    QHBoxLayout* tagFilterLayout = new QHBoxLayout();
     m_filterInput = new QLineEdit(this);
     m_filterInput->setPlaceholderText("Фильтр по тегу");
+    tagFilterLayout->addWidget(m_filterInput, 1);
     m_filterButton = new QPushButton("Фильтр", this);
+    tagFilterLayout->addWidget(m_filterButton);
     m_resetFilterButton = new QPushButton("Сбросить", this);
-    filterLayout->addWidget(m_filterInput);
-    filterLayout->addWidget(m_filterButton);
-    filterLayout->addWidget(m_resetFilterButton);
+    tagFilterLayout->addWidget(m_resetFilterButton);
+    filterGroupLayout->addLayout(tagFilterLayout);
 
-    QHBoxLayout* sortLayout = new QHBoxLayout();
+    QHBoxLayout* controlsLayout = new QHBoxLayout();
     m_sortBox = new QComboBox(this);
     m_sortBox->addItem("Порядок добавления");
     m_sortBox->addItem("Сначала важные");
     m_sortBox->addItem("Сначала простые");
+    m_sortBox->addItem("По сроку");
+    controlsLayout->addWidget(new QLabel("Сортировка:"));
+    controlsLayout->addWidget(m_sortBox);
+    controlsLayout->addSpacing(12);
     m_hideCompletedBox = new QCheckBox("Скрыть выполненные", this);
-    m_clearCompletedButton = new QPushButton("Очистить выполненные", this);
-    m_saveButton = new QPushButton("Сохранить в файл", this);
-    m_loadButton = new QPushButton("Загрузить из файла", this);
-    sortLayout->addWidget(m_sortBox);
-    sortLayout->addWidget(m_hideCompletedBox);
-    sortLayout->addWidget(m_clearCompletedButton);
-    sortLayout->addWidget(m_saveButton);
-    sortLayout->addWidget(m_loadButton);
+    controlsLayout->addWidget(m_hideCompletedBox);
+    controlsLayout->addStretch();
+    controlsLayout->addWidget(m_saveButton = new QPushButton("Сохранить", this));
+    controlsLayout->addWidget(m_loadButton = new QPushButton("Загрузить", this));
+    filterGroupLayout->addLayout(controlsLayout);
 
-    QHBoxLayout* actionLayout = new QHBoxLayout();
-    m_toggleButton = new QPushButton("Отметить выполненной", this);
+    QHBoxLayout* actionRow = new QHBoxLayout();
+    m_toggleButton = new QPushButton("Отметить", this);
+    actionRow->addWidget(m_toggleButton);
     m_editButton = new QPushButton("Редактировать", this);
-    m_removeButton = new QPushButton("Удалить задачу", this);
-    actionLayout->addWidget(m_toggleButton);
-    actionLayout->addWidget(m_editButton);
-    actionLayout->addWidget(m_removeButton);
+    actionRow->addWidget(m_editButton);
+    m_removeButton = new QPushButton("Удалить", this);
+    actionRow->addWidget(m_removeButton);
+    actionRow->addSpacing(12);
+    m_clearCompletedButton = new QPushButton("Очистить выполненные", this);
+    actionRow->addWidget(m_clearCompletedButton);
+    actionRow->addStretch();
+    filterGroupLayout->addLayout(actionRow);
 
-    // --- Server panel ---
-    QGroupBox* serverGroup = new QGroupBox("Сервер", this);
-    QHBoxLayout* serverLayout = new QHBoxLayout(serverGroup);
-    serverLayout->addWidget(new QLabel("Порт:", this));
+    mainLayout->addWidget(filterGroup);
+
+    // ── Сеть ──
+    QGroupBox* netGroup = new QGroupBox("Сеть", this);
+    QVBoxLayout* netLayout = new QVBoxLayout(netGroup);
+
+    QHBoxLayout* serverRow = new QHBoxLayout();
+    serverRow->addWidget(new QLabel("Сервер: порт"));
     m_serverPortInput = new QSpinBox(this);
     m_serverPortInput->setRange(1024, 65535);
     m_serverPortInput->setValue(9999);
-    serverLayout->addWidget(m_serverPortInput);
-    m_startServerButton = new QPushButton("Запустить сервер", this);
-    serverLayout->addWidget(m_startServerButton);
+    serverRow->addWidget(m_serverPortInput);
+    m_startServerButton = new QPushButton("Запустить", this);
+    serverRow->addWidget(m_startServerButton);
     m_stopServerButton = new QPushButton("Остановить", this);
     m_stopServerButton->setEnabled(false);
-    serverLayout->addWidget(m_stopServerButton);
+    serverRow->addWidget(m_stopServerButton);
     m_serverStatusLabel = new QLabel("Сервер не запущен", this);
-    serverLayout->addWidget(m_serverStatusLabel);
+    serverRow->addWidget(m_serverStatusLabel);
+    serverRow->addStretch();
+    netLayout->addLayout(serverRow);
 
-    // --- Client panel ---
-    QGroupBox* clientGroup = new QGroupBox("Клиент", this);
-    QHBoxLayout* clientLayout = new QHBoxLayout(clientGroup);
-    clientLayout->addWidget(new QLabel("Хост:", this));
+    QHBoxLayout* clientRow = new QHBoxLayout();
+    clientRow->addWidget(new QLabel("Клиент:"));
     m_serverHostInput = new QLineEdit(this);
     m_serverHostInput->setPlaceholderText("127.0.0.1");
     m_serverHostInput->setText("127.0.0.1");
-    clientLayout->addWidget(m_serverHostInput);
-    clientLayout->addWidget(new QLabel("Порт:", this));
+    m_serverHostInput->setMaximumWidth(130);
+    clientRow->addWidget(m_serverHostInput);
+    clientRow->addWidget(new QLabel(":"));
     m_clientPortInput = new QSpinBox(this);
     m_clientPortInput->setRange(1024, 65535);
     m_clientPortInput->setValue(9999);
-    clientLayout->addWidget(m_clientPortInput);
+    m_clientPortInput->setMaximumWidth(80);
+    clientRow->addWidget(m_clientPortInput);
     m_connectButton = new QPushButton("Подключиться", this);
-    clientLayout->addWidget(m_connectButton);
+    clientRow->addWidget(m_connectButton);
     m_disconnectButton = new QPushButton("Отключиться", this);
     m_disconnectButton->setEnabled(false);
-    clientLayout->addWidget(m_disconnectButton);
+    clientRow->addWidget(m_disconnectButton);
     m_connectionStatusLabel = new QLabel("Не подключён", this);
-    clientLayout->addWidget(m_connectionStatusLabel);
+    clientRow->addWidget(m_connectionStatusLabel);
+    clientRow->addStretch();
+    netLayout->addLayout(clientRow);
 
+    mainLayout->addWidget(netGroup);
+
+    // ── Список задач ──
+    QGroupBox* listGroup = new QGroupBox("Задачи", this);
+    QVBoxLayout* listLayout = new QVBoxLayout(listGroup);
     m_taskList = new QListWidget(this);
+    listLayout->addWidget(m_taskList);
+    mainLayout->addWidget(listGroup, 1);
 
+    // ── Статус строка ──
     m_statusLabel = new QLabel(this);
-
-    mainLayout->addWidget(m_titleInput);
-    mainLayout->addWidget(m_descriptionInput);
-    mainLayout->addWidget(m_tagsInput);
-    mainLayout->addWidget(m_priorityBox);
-    mainLayout->addWidget(m_addButton);
-    mainLayout->addWidget(m_searchInput);
-    mainLayout->addLayout(filterLayout);
-    mainLayout->addLayout(sortLayout);
-    mainLayout->addLayout(actionLayout);
-    mainLayout->addWidget(serverGroup);
-    mainLayout->addWidget(clientGroup);
-    mainLayout->addWidget(m_taskList);
     mainLayout->addWidget(m_statusLabel);
 
     setCentralWidget(centralWidget);
@@ -230,6 +266,11 @@ void MainWindow::addTask()
 
     Task task(title, description, tags, priority);
 
+    if (m_dueDateInput->date().isValid())
+    {
+        task.setDueDate(m_dueDateInput->date());
+    }
+
     if (m_clientMode)
     {
         m_client->sendAddTask(task);
@@ -242,6 +283,7 @@ void MainWindow::addTask()
     m_titleInput->clear();
     m_descriptionInput->clear();
     m_tagsInput->clear();
+    m_dueDateInput->setDate(QDate::currentDate());
 }
 
 void MainWindow::editSelectedTask()
@@ -253,7 +295,12 @@ void MainWindow::editSelectedTask()
         return;
     }
 
-    const Task& task = m_taskManager->tasks()[index];
+    const QVector<Task> allTasks = m_taskManager->tasks();
+    if (index >= allTasks.size())
+    {
+        return;
+    }
+    const Task& task = allTasks[index];
 
     QDialog dialog(this);
     dialog.setWindowTitle("Редактирование задачи");
@@ -269,10 +316,24 @@ void MainWindow::editSelectedTask()
     priorityEdit->addItem("Высокий");
     priorityEdit->setCurrentIndex(static_cast<int>(task.priority()));
 
+    QDateEdit* dueDateEdit = new QDateEdit(&dialog);
+    dueDateEdit->setCalendarPopup(true);
+    dueDateEdit->setSpecialValueText("Без срока");
+
+    if (task.dueDate().isValid())
+    {
+        dueDateEdit->setDate(task.dueDate());
+    }
+    else
+    {
+        dueDateEdit->setDate(QDate::currentDate());
+    }
+
     form->addRow("Название:", titleEdit);
     form->addRow("Описание:", descEdit);
     form->addRow("Теги:", tagsEdit);
     form->addRow("Приоритет:", priorityEdit);
+    form->addRow("Срок:", dueDateEdit);
 
     QDialogButtonBox* buttons = new QDialogButtonBox(
         QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
@@ -302,6 +363,11 @@ void MainWindow::editSelectedTask()
     Task updatedTask(title, descEdit->text().trimmed(), tags, priority);
     updatedTask.setCompleted(task.isCompleted());
 
+    if (dueDateEdit->date().isValid())
+    {
+        updatedTask.setDueDate(dueDateEdit->date());
+    }
+
     if (m_clientMode)
     {
         updatedTask.setId(task.id());
@@ -318,6 +384,17 @@ void MainWindow::removeSelectedTask()
     int index = selectedTaskIndex();
 
     if (index < 0)
+    {
+        return;
+    }
+
+    QString taskTitle = m_taskManager->tasks().value(index).title();
+    QMessageBox::StandardButton reply = QMessageBox::question(
+        this, "Подтверждение",
+        QString("Удалить задачу «%1»?").arg(taskTitle),
+        QMessageBox::Yes | QMessageBox::No);
+
+    if (reply != QMessageBox::Yes)
     {
         return;
     }
@@ -541,6 +618,21 @@ QVector<QPair<int, Task>> MainWindow::visibleTasks() const
                       return priorityWeight(left.second.priority()) < priorityWeight(right.second.priority());
                   });
     }
+    else if (m_sortBox->currentIndex() == 3)
+    {
+        std::sort(tasks.begin(), tasks.end(),
+                  [](const QPair<int, Task>& left, const QPair<int, Task>& right)
+                  {
+                      bool leftValid = left.second.dueDate().isValid();
+                      bool rightValid = right.second.dueDate().isValid();
+
+                      if (!leftValid && !rightValid) return false;
+                      if (!leftValid) return false;
+                      if (!rightValid) return true;
+
+                      return left.second.dueDate() < right.second.dueDate();
+                  });
+    }
 
     return tasks;
 }
@@ -559,8 +651,14 @@ void MainWindow::updateTaskList()
         QString statusText = task.isCompleted() ? "[✓]" : "[ ]";
         QString itemText = statusText + " "
                            + task.title()
-                           + " | Приоритет: " + priorityText(task.priority())
-                           + " | Теги: " + task.tags().join(", ");
+                           + " | Приоритет: " + priorityText(task.priority());
+
+        if (task.dueDate().isValid())
+        {
+            itemText += " | Срок: " + task.dueDate().toString("dd.MM.yyyy");
+        }
+
+        itemText += " | Теги: " + task.tags().join(", ");
 
         if (!task.description().isEmpty())
         {
@@ -575,6 +673,25 @@ void MainWindow::updateTaskList()
             QFont font = item->font();
             font.setStrikeOut(true);
             item->setFont(font);
+        }
+        else
+        {
+            switch (task.priority())
+            {
+            case TaskPriority::High:
+                item->setForeground(QColor("#C0392B"));
+                break;
+            case TaskPriority::Low:
+                item->setForeground(QColor("#27AE60"));
+                break;
+            default:
+                break;
+            }
+
+            if (task.dueDate().isValid() && task.dueDate() < QDate::currentDate())
+            {
+                item->setForeground(Qt::red);
+            }
         }
     }
 
