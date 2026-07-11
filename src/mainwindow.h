@@ -11,6 +11,7 @@
 #include <QSpinBox>
 #include <QPair>
 #include "taskmanager.h"
+#include "serializer.h"
 #include "taskserver.h"
 #include "networkclient.h"
 
@@ -30,6 +31,9 @@ private slots:
     void applyTagFilter();
     void resetTagFilter();
     void clearCompletedTasks();
+    void saveTasksToFile();
+    void loadTasksFromFile();
+    void autoSaveTasks();
     void updateTaskList();
 
     void startServer();
@@ -47,6 +51,8 @@ private:
     static QString priorityText(TaskPriority priority);
     static int priorityWeight(TaskPriority priority);
     void setClientModeEnabled(bool enabled);
+    QString defaultTasksFilePath() const;
+    bool loadTasksFromPath(const QString& filePath, bool showMessage);
 
     TaskManager* m_taskManager;
     TaskServer* m_server;
@@ -67,6 +73,8 @@ private:
     QPushButton* m_filterButton;
     QPushButton* m_resetFilterButton;
     QPushButton* m_clearCompletedButton;
+    QPushButton* m_saveButton;
+    QPushButton* m_loadButton;
     QLabel* m_statusLabel;
     QCheckBox* m_hideCompletedBox;
 
@@ -82,6 +90,7 @@ private:
     QLabel* m_connectionStatusLabel;
 
     QString m_activeFilter;
+    QString m_tasksFilePath;
     bool m_clientMode;
 };
 

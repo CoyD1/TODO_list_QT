@@ -11,6 +11,10 @@
 #include <QFormLayout>
 #include <QDialogButtonBox>
 #include <QMessageBox>
+#include <QFileDialog>
+#include <QStandardPaths>
+#include <QDir>
+#include <QFile>
 #include <algorithm>
 
 MainWindow::MainWindow(QWidget* parent)
@@ -63,9 +67,13 @@ MainWindow::MainWindow(QWidget* parent)
     m_sortBox->addItem("Сначала простые");
     m_hideCompletedBox = new QCheckBox("Скрыть выполненные", this);
     m_clearCompletedButton = new QPushButton("Очистить выполненные", this);
+    m_saveButton = new QPushButton("Сохранить в файл", this);
+    m_loadButton = new QPushButton("Загрузить из файла", this);
     sortLayout->addWidget(m_sortBox);
     sortLayout->addWidget(m_hideCompletedBox);
     sortLayout->addWidget(m_clearCompletedButton);
+    sortLayout->addWidget(m_saveButton);
+    sortLayout->addWidget(m_loadButton);
 
     QHBoxLayout* actionLayout = new QHBoxLayout();
     m_toggleButton = new QPushButton("Отметить выполненной", this);
@@ -146,6 +154,10 @@ MainWindow::MainWindow(QWidget* parent)
             this, &MainWindow::resetTagFilter);
     connect(m_clearCompletedButton, &QPushButton::clicked,
             this, &MainWindow::clearCompletedTasks);
+    connect(m_saveButton, &QPushButton::clicked,
+            this, &MainWindow::saveTasksToFile);
+    connect(m_loadButton, &QPushButton::clicked,
+            this, &MainWindow::loadTasksFromFile);
     connect(m_taskList, &QListWidget::itemDoubleClicked,
             this, &MainWindow::editSelectedTask);
     connect(m_searchInput, &QLineEdit::textChanged,
@@ -156,6 +168,11 @@ MainWindow::MainWindow(QWidget* parent)
             this, &MainWindow::updateTaskList);
     connect(m_taskManager, &TaskManager::tasksChanged,
             this, &MainWindow::updateTaskList);
+    connect(m_taskManager, &TaskManager::tasksChanged,
+            this, &MainWindow::autoSaveTasks);
+
+    m_tasksFilePath = defaultTasksFilePath();
+    loadTasksFromPath(m_tasksFilePath, false);
 
     // Server buttons
     connect(m_startServerButton, &QPushButton::clicked,
@@ -352,6 +369,88 @@ void MainWindow::resetTagFilter()
 void MainWindow::clearCompletedTasks()
 {
     m_taskManager->clearCompleted();
+}
+
+QString MainWindow::defaultTasksFilePath() const
+{
+    QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir().mkpath(dir);
+    return dir + "/tasks.json";
+}
+
+bool MainWindow::loadTasksFromPath(const QString& filePath, bool showMessage)
+{
+    if (!QFile::exists(filePath))
+    {
+        return false;
+    }
+
+    JsonSerializer serializer;
+    QVector<Task> tasks = serializer.load(filePath);
+
+    if (tasks.isEmpty() && showMessage)
+    {
+        QMessageBox::warning(this, "Загрузка", "Файл пуст или имеет неверный формат");
+        return false;
+    }
+
+    m_taskManager->setTasks(tasks);
+    m_tasksFilePath = filePath;
+
+    if (showMessage)
+    {
+        QMessageBox::information(this, "Загрузка",
+                                 QString("Загружено задач: %1").arg(tasks.size()));
+    }
+
+    return true;
+}
+
+void MainWindow::saveTasksToFile()
+{
+    QString filePath = QFileDialog::getSaveFileName(
+        this,
+        "Сохранить задачи",
+        m_tasksFilePath,
+        "JSON (*.json)");
+
+    if (filePath.isEmpty())
+    {
+        return;
+    }
+
+    JsonSerializer serializer;
+    serializer.save(m_taskManager->tasks(), filePath);
+    m_tasksFilePath = filePath;
+
+    QMessageBox::information(this, "Сохранение", "Задачи сохранены");
+}
+
+void MainWindow::loadTasksFromFile()
+{
+    QString filePath = QFileDialog::getOpenFileName(
+        this,
+        "Загрузить задачи",
+        m_tasksFilePath,
+        "JSON (*.json)");
+
+    if (filePath.isEmpty())
+    {
+        return;
+    }
+
+    loadTasksFromPath(filePath, true);
+}
+
+void MainWindow::autoSaveTasks()
+{
+    if (m_clientMode)
+    {
+        return;
+    }
+
+    JsonSerializer serializer;
+    serializer.save(m_taskManager->tasks(), m_tasksFilePath);
 }
 
 int MainWindow::selectedTaskIndex() const

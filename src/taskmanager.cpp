@@ -73,6 +73,16 @@ void TaskManager::updateTask(int index, const Task& task)
 void TaskManager::setTasks(const QVector<Task>& tasks)
 {
     m_tasks = tasks;
+    m_nextId = 1;
+
+    for (const Task& task : m_tasks)
+    {
+        if (task.id() >= m_nextId)
+        {
+            m_nextId = task.id() + 1;
+        }
+    }
+
     emit tasksChanged();
 }
 

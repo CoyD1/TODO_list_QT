@@ -83,6 +83,38 @@ CMakeLists.txt.user*
 /build*/
 /.qtcreator/
 
+# CMake / IDE
+cmake-build-*/
+out/
+.cache/
+.idea/
+.vscode/
+
+# CMake in-source build (Qt Creator shadow build in project root)
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+build.ninja
+.ninja_deps
+.ninja_log
+CTestTestfile.cmake
+Testing/
+qtcsettings.cmake
+.cmake/
+.qt/
+.qtc/
+.qtc_clangd/
+compile_commands.json
+
+# Qt Creator accidental projects
+untitled/
+untitled*/
+
+# Local task data (user-specific, not for repo)
+tasks.json
+*.tasks.json
+data/
+
 # macOS
 *.app
 .DS_Store
