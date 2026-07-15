@@ -28,6 +28,7 @@ private slots:
     void addTask();
     void editSelectedTask();
     void removeSelectedTask();
+    void duplicateSelectedTask();
     void toggleSelectedTask();
     void applyFilters();
     void resetFilters();
@@ -45,6 +46,9 @@ private slots:
     void onDisconnected();
     void onConnectionError(const QString& error);
     void onTasksReceived(const QVector<Task>& tasks);
+    void onServerClientConnected();
+    void onServerClientDisconnected();
+    void updateServerStatusLabel();
 
 private:
     int selectedTaskIndex() const;
@@ -75,6 +79,7 @@ private:
     QComboBox* m_sortBox;
     QPushButton* m_addButton;
     QPushButton* m_editButton;
+    QPushButton* m_duplicateButton;
     QPushButton* m_removeButton;
     QPushButton* m_toggleButton;
     QPushButton* m_filterButton;
@@ -84,6 +89,7 @@ private:
     QPushButton* m_loadButton;
     QLabel* m_statusLabel;
     QCheckBox* m_hideCompletedBox;
+    QCheckBox* m_showOverdueOnlyBox;
 
     QSpinBox* m_serverPortInput;
     QPushButton* m_startServerButton;
@@ -101,6 +107,7 @@ private:
     int m_activeStatusFilter;
     QString m_tasksFilePath;
     bool m_clientMode;
+    int m_connectedClients;
 };
 
 #endif

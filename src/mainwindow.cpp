@@ -16,6 +16,7 @@
 #include <QDir>
 #include <QFile>
 #include <QDateEdit>
+#include <QDateTime>
 #include <algorithm>
 
 MainWindow::MainWindow(QWidget* parent)
@@ -24,7 +25,8 @@ MainWindow::MainWindow(QWidget* parent)
     m_server(nullptr),
     m_client(new NetworkClient(this)),
     m_activeStatusFilter(-1),
-    m_clientMode(false)
+    m_clientMode(false),
+    m_connectedClients(0)
 {
     setWindowTitle("Network TODO List");
     resize(800, 700);
@@ -120,7 +122,9 @@ MainWindow::MainWindow(QWidget* parent)
     controlsLayout->addWidget(m_sortBox);
     controlsLayout->addSpacing(12);
     m_hideCompletedBox = new QCheckBox("Скрыть выполненные", this);
+    m_showOverdueOnlyBox = new QCheckBox("Только просроченные", this);
     controlsLayout->addWidget(m_hideCompletedBox);
+    controlsLayout->addWidget(m_showOverdueOnlyBox);
     controlsLayout->addStretch();
     controlsLayout->addWidget(m_saveButton = new QPushButton("Сохранить", this));
     controlsLayout->addWidget(m_loadButton = new QPushButton("Загрузить", this));
@@ -131,6 +135,8 @@ MainWindow::MainWindow(QWidget* parent)
     actionRow->addWidget(m_toggleButton);
     m_editButton = new QPushButton("Редактировать", this);
     actionRow->addWidget(m_editButton);
+    m_duplicateButton = new QPushButton("Дублировать", this);
+    actionRow->addWidget(m_duplicateButton);
     m_removeButton = new QPushButton("Удалить", this);
     actionRow->addWidget(m_removeButton);
     actionRow->addSpacing(12);
@@ -203,6 +209,8 @@ MainWindow::MainWindow(QWidget* parent)
             this, &MainWindow::addTask);
     connect(m_editButton, &QPushButton::clicked,
             this, &MainWindow::editSelectedTask);
+    connect(m_duplicateButton, &QPushButton::clicked,
+            this, &MainWindow::duplicateSelectedTask);
     connect(m_removeButton, &QPushButton::clicked,
             this, &MainWindow::removeSelectedTask);
     connect(m_toggleButton, &QPushButton::clicked,
@@ -224,6 +232,8 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_sortBox, &QComboBox::currentIndexChanged,
             this, &MainWindow::updateTaskList);
     connect(m_hideCompletedBox, &QCheckBox::toggled,
+            this, &MainWindow::updateTaskList);
+    connect(m_showOverdueOnlyBox, &QCheckBox::toggled,
             this, &MainWindow::updateTaskList);
     connect(m_taskManager, &TaskManager::tasksChanged,
             this, &MainWindow::updateTaskList);
@@ -274,6 +284,7 @@ void MainWindow::addTask()
 
     if (title.isEmpty())
     {
+        QMessageBox::warning(this, "Новая задача", "Введите название задачи");
         return;
     }
 
@@ -417,6 +428,32 @@ void MainWindow::editSelectedTask()
     else
     {
         m_taskManager->updateTask(index, updatedTask);
+    }
+}
+
+void MainWindow::duplicateSelectedTask()
+{
+    int index = selectedTaskIndex();
+
+    if (index < 0)
+    {
+        QMessageBox::information(this, "Дублирование", "Выберите задачу для копирования");
+        return;
+    }
+
+    const Task& sourceTask = m_taskManager->tasks()[index];
+    Task copy = sourceTask;
+    copy.setTitle(sourceTask.title() + " (копия)");
+    copy.setStatus(TaskStatus::Planned);
+    copy.setCreatedAt(QDateTime::currentDateTime());
+
+    if (m_clientMode)
+    {
+        m_client->sendAddTask(copy);
+    }
+    else
+    {
+        m_taskManager->duplicateTask(index);
     }
 }
 
@@ -674,6 +711,11 @@ QVector<QPair<int, Task>> MainWindow::visibleTasks() const
             continue;
         }
 
+        if (m_showOverdueOnlyBox->isChecked() && !task.isOverdue())
+        {
+            continue;
+        }
+
         tasks.append(qMakePair(i, task));
     }
 
@@ -766,6 +808,11 @@ void MainWindow::updateTaskList()
         if (task.dueDate().isValid())
         {
             itemText += " | Срок: " + task.dueDate().toString("dd.MM.yyyy");
+
+            if (task.isOverdue())
+            {
+                itemText += " (просрочена)";
+            }
         }
 
         if (!task.assignee().isEmpty())
@@ -791,30 +838,34 @@ void MainWindow::updateTaskList()
         }
         else
         {
-            switch (task.priority())
-            {
-            case TaskPriority::High:
-                item->setForeground(QColor("#C0392B"));
-                break;
-            case TaskPriority::Low:
-                item->setForeground(QColor("#27AE60"));
-                break;
-            default:
-                break;
-            }
-
-            if (task.dueDate().isValid() && task.dueDate() < QDate::currentDate())
+            if (task.isOverdue())
             {
                 item->setForeground(Qt::red);
+            }
+            else
+            {
+                switch (task.priority())
+                {
+                case TaskPriority::High:
+                    item->setForeground(QColor("#C0392B"));
+                    break;
+                case TaskPriority::Low:
+                    item->setForeground(QColor("#27AE60"));
+                    break;
+                default:
+                    break;
+                }
             }
         }
     }
 
     int total = m_taskManager->tasks().size();
     int completed = m_taskManager->completedCount();
-    QString statusText = QString("Всего задач: %1 | Выполнено: %2 | Показано: %3")
+    int overdue = m_taskManager->overdueCount();
+    QString statusText = QString("Всего: %1 | Выполнено: %2 | Просрочено: %3 | Показано: %4")
                              .arg(total)
                              .arg(completed)
+                             .arg(overdue)
                              .arg(tasks.size());
 
     if (!m_activeFilter.isEmpty())
@@ -856,6 +907,10 @@ void MainWindow::startServer()
     }
 
     m_server = new TaskServer(m_taskManager, this);
+    connect(m_server, &TaskServer::clientConnected,
+            this, &MainWindow::onServerClientConnected);
+    connect(m_server, &TaskServer::clientDisconnected,
+            this, &MainWindow::onServerClientDisconnected);
 
     if (!m_server->start(static_cast<quint16>(m_serverPortInput->value())))
     {
@@ -869,6 +924,7 @@ void MainWindow::startServer()
     m_startServerButton->setEnabled(false);
     m_stopServerButton->setEnabled(true);
     m_serverPortInput->setEnabled(false);
+    updateServerStatusLabel();
 }
 
 void MainWindow::stopServer()
@@ -881,6 +937,7 @@ void MainWindow::stopServer()
     m_server->stop();
     delete m_server;
     m_server = nullptr;
+    m_connectedClients = 0;
 
     m_serverStatusLabel->setText("Сервер не запущен");
     m_startServerButton->setEnabled(true);
@@ -943,4 +1000,32 @@ void MainWindow::onTasksReceived(const QVector<Task>& tasks)
 void MainWindow::setClientModeEnabled(bool enabled)
 {
     m_clientMode = enabled;
+}
+
+void MainWindow::onServerClientConnected()
+{
+    ++m_connectedClients;
+    updateServerStatusLabel();
+}
+
+void MainWindow::onServerClientDisconnected()
+{
+    if (m_connectedClients > 0)
+    {
+        --m_connectedClients;
+    }
+
+    updateServerStatusLabel();
+}
+
+void MainWindow::updateServerStatusLabel()
+{
+    if (!m_server)
+    {
+        m_serverStatusLabel->setText("Сервер не запущен");
+        return;
+    }
+
+    m_serverStatusLabel->setText(
+        QString("Сервер запущен | Клиентов: %1").arg(m_connectedClients));
 }

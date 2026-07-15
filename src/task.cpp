@@ -77,6 +77,13 @@ bool Task::isCompleted() const
     return m_status == TaskStatus::Completed;
 }
 
+bool Task::isOverdue() const
+{
+    return m_dueDate.isValid()
+           && !isCompleted()
+           && m_dueDate < QDate::currentDate();
+}
+
 void Task::setId(int id)
 {
     m_id = id;

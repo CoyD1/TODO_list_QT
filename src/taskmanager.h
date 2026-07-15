@@ -15,12 +15,14 @@ public:
     void addTask(const Task& task);
     void removeTask(int index);
     void toggleCompleted(int index);
+    void duplicateTask(int index);
     void clearCompleted();
     void updateTask(int index, const Task& task);
     void setTasks(const QVector<Task>& tasks);
     QVector<Task> tasks() const;
     QVector<Task> filterByTag(const QString& tag) const;
     int completedCount() const;
+    int overdueCount() const;
     int taskIndexById(int id) const;
 
 signals:

@@ -1,5 +1,7 @@
 #include "taskmanager.h"
 
+#include <QDateTime>
+
 TaskManager::TaskManager(QObject* parent)
     : QObject(parent),
     m_nextId(1)
@@ -33,6 +35,22 @@ void TaskManager::toggleCompleted(int index)
     }
 
     m_tasks[index].setCompleted(!m_tasks[index].isCompleted());
+    emit tasksChanged();
+}
+
+void TaskManager::duplicateTask(int index)
+{
+    if (index < 0 || index >= m_tasks.size())
+    {
+        return;
+    }
+
+    Task copy = m_tasks[index];
+    copy.setId(assignId());
+    copy.setTitle(copy.title() + " (копия)");
+    copy.setStatus(TaskStatus::Planned);
+    copy.setCreatedAt(QDateTime::currentDateTime());
+    m_tasks.append(copy);
     emit tasksChanged();
 }
 
@@ -113,6 +131,21 @@ int TaskManager::completedCount() const
     for (const Task& task : m_tasks)
     {
         if (task.isCompleted())
+        {
+            ++count;
+        }
+    }
+
+    return count;
+}
+
+int TaskManager::overdueCount() const
+{
+    int count = 0;
+
+    for (const Task& task : m_tasks)
+    {
+        if (task.isOverdue())
         {
             ++count;
         }
