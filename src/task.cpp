@@ -5,20 +5,25 @@
 Task::Task()
     : m_id(-1),
     m_priority(TaskPriority::Medium),
-    m_completed(false)
+    m_status(TaskStatus::Planned),
+    m_createdAt(QDateTime::currentDateTime())
 {
 }
 
 Task::Task(const QString& title,
            const QString& description,
            const QStringList& tags,
-           TaskPriority priority)
+           const QString& assignee,
+           TaskPriority priority,
+           TaskStatus status)
     : m_id(-1),
     m_title(title),
     m_description(description),
     m_tags(tags),
+    m_assignee(assignee),
     m_priority(priority),
-    m_completed(false)
+    m_status(status),
+    m_createdAt(QDateTime::currentDateTime())
 {
 }
 
@@ -42,9 +47,19 @@ QStringList Task::tags() const
     return m_tags;
 }
 
+QString Task::assignee() const
+{
+    return m_assignee;
+}
+
 TaskPriority Task::priority() const
 {
     return m_priority;
+}
+
+TaskStatus Task::status() const
+{
+    return m_status;
 }
 
 QDate Task::dueDate() const
@@ -52,9 +67,14 @@ QDate Task::dueDate() const
     return m_dueDate;
 }
 
+QDateTime Task::createdAt() const
+{
+    return m_createdAt;
+}
+
 bool Task::isCompleted() const
 {
-    return m_completed;
+    return m_status == TaskStatus::Completed;
 }
 
 void Task::setId(int id)
@@ -77,9 +97,19 @@ void Task::setTags(const QStringList& tags)
     m_tags = tags;
 }
 
+void Task::setAssignee(const QString& assignee)
+{
+    m_assignee = assignee;
+}
+
 void Task::setPriority(TaskPriority priority)
 {
     m_priority = priority;
+}
+
+void Task::setStatus(TaskStatus status)
+{
+    m_status = status;
 }
 
 void Task::setDueDate(const QDate& date)
@@ -87,9 +117,14 @@ void Task::setDueDate(const QDate& date)
     m_dueDate = date;
 }
 
+void Task::setCreatedAt(const QDateTime& dateTime)
+{
+    m_createdAt = dateTime;
+}
+
 void Task::setCompleted(bool completed)
 {
-    m_completed = completed;
+    m_status = completed ? TaskStatus::Completed : TaskStatus::Planned;
 }
 
 QJsonObject Task::toJson() const
@@ -98,8 +133,11 @@ QJsonObject Task::toJson() const
     obj["id"] = m_id;
     obj["title"] = m_title;
     obj["description"] = m_description;
+    obj["assignee"] = m_assignee;
     obj["priority"] = static_cast<int>(m_priority);
-    obj["completed"] = m_completed;
+    obj["status"] = static_cast<int>(m_status);
+    obj["completed"] = isCompleted();
+    obj["createdAt"] = m_createdAt.toString(Qt::ISODate);
 
     if (m_dueDate.isValid())
     {
@@ -122,8 +160,28 @@ Task Task::fromJson(const QJsonObject& json)
     task.m_id = json["id"].toInt(-1);
     task.m_title = json["title"].toString();
     task.m_description = json["description"].toString();
+    task.m_assignee = json["assignee"].toString();
     task.m_priority = static_cast<TaskPriority>(json["priority"].toInt(1));
-    task.m_completed = json["completed"].toBool();
+
+    if (json.contains("status"))
+    {
+        task.m_status = static_cast<TaskStatus>(json["status"].toInt(0));
+    }
+    else if (json["completed"].toBool())
+    {
+        task.m_status = TaskStatus::Completed;
+    }
+
+    if (json.contains("createdAt"))
+    {
+        const QDateTime createdAt = QDateTime::fromString(
+            json["createdAt"].toString(), Qt::ISODate);
+
+        if (createdAt.isValid())
+        {
+            task.m_createdAt = createdAt;
+        }
+    }
 
     if (json.contains("dueDate"))
     {

@@ -23,6 +23,7 @@ MainWindow::MainWindow(QWidget* parent)
     m_taskManager(new TaskManager(this)),
     m_server(nullptr),
     m_client(new NetworkClient(this)),
+    m_activeStatusFilter(-1),
     m_clientMode(false)
 {
     setWindowTitle("Network TODO List");
@@ -44,6 +45,10 @@ MainWindow::MainWindow(QWidget* parent)
     m_descriptionInput->setPlaceholderText("Описание задачи");
     inputLayout->addRow("Описание:", m_descriptionInput);
 
+    m_assigneeInput = new QLineEdit(this);
+    m_assigneeInput->setPlaceholderText("Имя участника команды");
+    inputLayout->addRow("Исполнитель:", m_assigneeInput);
+
     m_tagsInput = new QLineEdit(this);
     m_tagsInput->setPlaceholderText("учеба, срочно, работа");
     inputLayout->addRow("Теги:", m_tagsInput);
@@ -55,6 +60,13 @@ MainWindow::MainWindow(QWidget* parent)
     m_priorityBox->addItem("Высокий");
     rowLayout->addWidget(new QLabel("Приоритет:"));
     rowLayout->addWidget(m_priorityBox);
+    rowLayout->addSpacing(16);
+    rowLayout->addWidget(new QLabel("Статус:"));
+    m_statusBox = new QComboBox(this);
+    m_statusBox->addItem("Запланирована");
+    m_statusBox->addItem("В работе");
+    m_statusBox->addItem("Выполнена");
+    rowLayout->addWidget(m_statusBox);
     rowLayout->addSpacing(16);
     rowLayout->addWidget(new QLabel("Срок:"));
     m_dueDateInput = new QDateEdit(this);
@@ -74,14 +86,23 @@ MainWindow::MainWindow(QWidget* parent)
     QVBoxLayout* filterGroupLayout = new QVBoxLayout(filterGroup);
 
     m_searchInput = new QLineEdit(this);
-    m_searchInput->setPlaceholderText("Поиск по названию...");
+    m_searchInput->setPlaceholderText("Поиск по названию или исполнителю...");
     filterGroupLayout->addWidget(m_searchInput);
 
     QHBoxLayout* tagFilterLayout = new QHBoxLayout();
     m_filterInput = new QLineEdit(this);
     m_filterInput->setPlaceholderText("Фильтр по тегу");
     tagFilterLayout->addWidget(m_filterInput, 1);
-    m_filterButton = new QPushButton("Фильтр", this);
+    m_assigneeFilterInput = new QLineEdit(this);
+    m_assigneeFilterInput->setPlaceholderText("Фильтр по исполнителю");
+    tagFilterLayout->addWidget(m_assigneeFilterInput, 1);
+    m_statusFilterBox = new QComboBox(this);
+    m_statusFilterBox->addItem("Все статусы");
+    m_statusFilterBox->addItem("Запланированные");
+    m_statusFilterBox->addItem("В работе");
+    m_statusFilterBox->addItem("Выполненные");
+    tagFilterLayout->addWidget(m_statusFilterBox);
+    m_filterButton = new QPushButton("Применить", this);
     tagFilterLayout->addWidget(m_filterButton);
     m_resetFilterButton = new QPushButton("Сбросить", this);
     tagFilterLayout->addWidget(m_resetFilterButton);
@@ -93,6 +114,8 @@ MainWindow::MainWindow(QWidget* parent)
     m_sortBox->addItem("Сначала важные");
     m_sortBox->addItem("Сначала простые");
     m_sortBox->addItem("По сроку");
+    m_sortBox->addItem("Сначала новые");
+    m_sortBox->addItem("Сначала старые");
     controlsLayout->addWidget(new QLabel("Сортировка:"));
     controlsLayout->addWidget(m_sortBox);
     controlsLayout->addSpacing(12);
@@ -185,9 +208,9 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_toggleButton, &QPushButton::clicked,
             this, &MainWindow::toggleSelectedTask);
     connect(m_filterButton, &QPushButton::clicked,
-            this, &MainWindow::applyTagFilter);
+            this, &MainWindow::applyFilters);
     connect(m_resetFilterButton, &QPushButton::clicked,
-            this, &MainWindow::resetTagFilter);
+            this, &MainWindow::resetFilters);
     connect(m_clearCompletedButton, &QPushButton::clicked,
             this, &MainWindow::clearCompletedTasks);
     connect(m_saveButton, &QPushButton::clicked,
@@ -241,6 +264,7 @@ void MainWindow::addTask()
 {
     QString title = m_titleInput->text().trimmed();
     QString description = m_descriptionInput->text().trimmed();
+    QString assignee = m_assigneeInput->text().trimmed();
     QStringList tags = m_tagsInput->text().split(",", Qt::SkipEmptyParts);
 
     for (QString& tag : tags)
@@ -264,7 +288,8 @@ void MainWindow::addTask()
         priority = TaskPriority::High;
     }
 
-    Task task(title, description, tags, priority);
+    TaskStatus status = static_cast<TaskStatus>(m_statusBox->currentIndex());
+    Task task(title, description, tags, assignee, priority, status);
 
     if (m_dueDateInput->date().isValid())
     {
@@ -282,7 +307,9 @@ void MainWindow::addTask()
 
     m_titleInput->clear();
     m_descriptionInput->clear();
+    m_assigneeInput->clear();
     m_tagsInput->clear();
+    m_statusBox->setCurrentIndex(0);
     m_dueDateInput->setDate(QDate::currentDate());
 }
 
@@ -309,12 +336,19 @@ void MainWindow::editSelectedTask()
 
     QLineEdit* titleEdit = new QLineEdit(task.title(), &dialog);
     QLineEdit* descEdit = new QLineEdit(task.description(), &dialog);
+    QLineEdit* assigneeEdit = new QLineEdit(task.assignee(), &dialog);
     QLineEdit* tagsEdit = new QLineEdit(task.tags().join(", "), &dialog);
     QComboBox* priorityEdit = new QComboBox(&dialog);
     priorityEdit->addItem("Низкий");
     priorityEdit->addItem("Средний");
     priorityEdit->addItem("Высокий");
     priorityEdit->setCurrentIndex(static_cast<int>(task.priority()));
+
+    QComboBox* statusEdit = new QComboBox(&dialog);
+    statusEdit->addItem("Запланирована");
+    statusEdit->addItem("В работе");
+    statusEdit->addItem("Выполнена");
+    statusEdit->setCurrentIndex(static_cast<int>(task.status()));
 
     QDateEdit* dueDateEdit = new QDateEdit(&dialog);
     dueDateEdit->setCalendarPopup(true);
@@ -331,8 +365,10 @@ void MainWindow::editSelectedTask()
 
     form->addRow("Название:", titleEdit);
     form->addRow("Описание:", descEdit);
+    form->addRow("Исполнитель:", assigneeEdit);
     form->addRow("Теги:", tagsEdit);
     form->addRow("Приоритет:", priorityEdit);
+    form->addRow("Статус:", statusEdit);
     form->addRow("Срок:", dueDateEdit);
 
     QDialogButtonBox* buttons = new QDialogButtonBox(
@@ -360,8 +396,13 @@ void MainWindow::editSelectedTask()
     }
 
     TaskPriority priority = static_cast<TaskPriority>(priorityEdit->currentIndex());
-    Task updatedTask(title, descEdit->text().trimmed(), tags, priority);
-    updatedTask.setCompleted(task.isCompleted());
+    Task updatedTask(title,
+                     descEdit->text().trimmed(),
+                     tags,
+                     assigneeEdit->text().trimmed(),
+                     priority,
+                     static_cast<TaskStatus>(statusEdit->currentIndex()));
+    updatedTask.setCreatedAt(task.createdAt());
 
     if (dueDateEdit->date().isValid())
     {
@@ -430,16 +471,22 @@ void MainWindow::toggleSelectedTask()
     }
 }
 
-void MainWindow::applyTagFilter()
+void MainWindow::applyFilters()
 {
     m_activeFilter = m_filterInput->text().trimmed();
+    m_activeAssigneeFilter = m_assigneeFilterInput->text().trimmed();
+    m_activeStatusFilter = m_statusFilterBox->currentIndex() - 1;
     updateTaskList();
 }
 
-void MainWindow::resetTagFilter()
+void MainWindow::resetFilters()
 {
     m_activeFilter.clear();
+    m_activeAssigneeFilter.clear();
+    m_activeStatusFilter = -1;
     m_filterInput->clear();
+    m_assigneeFilterInput->clear();
+    m_statusFilterBox->setCurrentIndex(0);
     updateTaskList();
 }
 
@@ -557,6 +604,21 @@ QString MainWindow::priorityText(TaskPriority priority)
     return "Средний";
 }
 
+QString MainWindow::taskStatusText(TaskStatus status)
+{
+    switch (status)
+    {
+    case TaskStatus::Planned:
+        return "Запланирована";
+    case TaskStatus::InProgress:
+        return "В работе";
+    case TaskStatus::Completed:
+        return "Выполнена";
+    }
+
+    return "Запланирована";
+}
+
 int MainWindow::priorityWeight(TaskPriority priority)
 {
     switch (priority)
@@ -583,13 +645,26 @@ QVector<QPair<int, Task>> MainWindow::visibleTasks() const
         const Task& task = allTasks[i];
 
         if (!searchText.isEmpty()
-            && !task.title().contains(searchText, Qt::CaseInsensitive))
+            && !task.title().contains(searchText, Qt::CaseInsensitive)
+            && !task.assignee().contains(searchText, Qt::CaseInsensitive))
         {
             continue;
         }
 
         if (!m_activeFilter.isEmpty()
             && !task.tags().contains(m_activeFilter, Qt::CaseInsensitive))
+        {
+            continue;
+        }
+
+        if (!m_activeAssigneeFilter.isEmpty()
+            && !task.assignee().contains(m_activeAssigneeFilter, Qt::CaseInsensitive))
+        {
+            continue;
+        }
+
+        if (m_activeStatusFilter >= 0
+            && static_cast<int>(task.status()) != m_activeStatusFilter)
         {
             continue;
         }
@@ -633,6 +708,22 @@ QVector<QPair<int, Task>> MainWindow::visibleTasks() const
                       return left.second.dueDate() < right.second.dueDate();
                   });
     }
+    else if (m_sortBox->currentIndex() == 4)
+    {
+        std::sort(tasks.begin(), tasks.end(),
+                  [](const QPair<int, Task>& left, const QPair<int, Task>& right)
+                  {
+                      return left.second.createdAt() > right.second.createdAt();
+                  });
+    }
+    else if (m_sortBox->currentIndex() == 5)
+    {
+        std::sort(tasks.begin(), tasks.end(),
+                  [](const QPair<int, Task>& left, const QPair<int, Task>& right)
+                  {
+                      return left.second.createdAt() < right.second.createdAt();
+                  });
+    }
 
     return tasks;
 }
@@ -648,14 +739,38 @@ void MainWindow::updateTaskList()
         const Task& task = entry.second;
         const int sourceIndex = entry.first;
 
-        QString statusText = task.isCompleted() ? "[✓]" : "[ ]";
+        QString statusText;
+        if (task.status() == TaskStatus::Completed)
+        {
+            statusText = "[✓]";
+        }
+        else if (task.status() == TaskStatus::InProgress)
+        {
+            statusText = "[~]";
+        }
+        else
+        {
+            statusText = "[ ]";
+        }
+
         QString itemText = statusText + " "
                            + task.title()
+                           + " | Статус: " + taskStatusText(task.status())
                            + " | Приоритет: " + priorityText(task.priority());
+
+        if (task.createdAt().isValid())
+        {
+            itemText += " | Создана: " + task.createdAt().toString("dd.MM.yyyy HH:mm");
+        }
 
         if (task.dueDate().isValid())
         {
             itemText += " | Срок: " + task.dueDate().toString("dd.MM.yyyy");
+        }
+
+        if (!task.assignee().isEmpty())
+        {
+            itemText += " | Исполнитель: " + task.assignee();
         }
 
         itemText += " | Теги: " + task.tags().join(", ");
@@ -704,7 +819,18 @@ void MainWindow::updateTaskList()
 
     if (!m_activeFilter.isEmpty())
     {
-        statusText += QString(" | Фильтр: %1").arg(m_activeFilter);
+        statusText += QString(" | Тег: %1").arg(m_activeFilter);
+    }
+
+    if (!m_activeAssigneeFilter.isEmpty())
+    {
+        statusText += QString(" | Исполнитель: %1").arg(m_activeAssigneeFilter);
+    }
+
+    if (m_activeStatusFilter >= 0)
+    {
+        statusText += " | Статус: "
+                      + taskStatusText(static_cast<TaskStatus>(m_activeStatusFilter));
     }
 
     if (!m_searchInput->text().trimmed().isEmpty())

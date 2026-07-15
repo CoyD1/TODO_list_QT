@@ -12,6 +12,8 @@ TaskServer::TaskServer(TaskManager* taskManager, QObject* parent)
 {
     connect(m_server, &QTcpServer::newConnection,
             this, &TaskServer::onNewConnection);
+    connect(m_taskManager, &TaskManager::tasksChanged,
+            this, &TaskServer::broadcastTasks);
 }
 
 bool TaskServer::start(quint16 port)
@@ -33,6 +35,7 @@ void TaskServer::stop()
     }
 
     m_clients.clear();
+    m_clientBuffers.clear();
     m_server->close();
     emit serverStopped();
 }
@@ -48,6 +51,7 @@ void TaskServer::onNewConnection()
     {
         QTcpSocket* socket = m_server->nextPendingConnection();
         m_clients.append(socket);
+        m_clientBuffers.insert(socket, QByteArray());
 
         connect(socket, &QTcpSocket::readyRead,
                 this, &TaskServer::onReadyRead);
@@ -71,10 +75,23 @@ void TaskServer::onReadyRead()
         return;
     }
 
-    while (socket->bytesAvailable() > 0)
+    QByteArray& buffer = m_clientBuffers[socket];
+    buffer.append(socket->readAll());
+
+    while (buffer.size() >= 4)
     {
-        QByteArray data = socket->readAll();
-        processMessage(socket, data);
+        QDataStream stream(buffer);
+        quint32 messageSize = 0;
+        stream >> messageSize;
+
+        if (buffer.size() < static_cast<int>(messageSize) + 4)
+        {
+            break;
+        }
+
+        const QByteArray data = buffer.mid(4, messageSize);
+        buffer.remove(0, 4 + messageSize);
+        processMessage(data);
     }
 }
 
@@ -88,6 +105,7 @@ void TaskServer::onClientDisconnected()
     }
 
     m_clients.removeOne(socket);
+    m_clientBuffers.remove(socket);
     emit clientDisconnected(socket->peerAddress().toString());
     socket->deleteLater();
 }
@@ -114,7 +132,14 @@ void TaskServer::broadcastMessage(const QByteArray& data)
     }
 }
 
-void TaskServer::processMessage(QTcpSocket* sender, const QByteArray& data)
+void TaskServer::broadcastTasks()
+{
+    SyncMessage sync(m_taskManager->tasks());
+    QJsonDocument doc(sync.toJson());
+    broadcastMessage(doc.toJson(QJsonDocument::Compact));
+}
+
+void TaskServer::processMessage(const QByteArray& data)
 {
     QJsonDocument doc = QJsonDocument::fromJson(data);
 
@@ -179,8 +204,4 @@ void TaskServer::processMessage(QTcpSocket* sender, const QByteArray& data)
     }
 
     delete msg;
-
-    SyncMessage sync(m_taskManager->tasks());
-    QJsonDocument syncDoc(sync.toJson());
-    broadcastMessage(syncDoc.toJson(QJsonDocument::Compact));
 }

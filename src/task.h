@@ -4,6 +4,7 @@
 #include <QString>
 #include <QStringList>
 #include <QDate>
+#include <QDateTime>
 #include <QJsonObject>
 
 enum class TaskPriority
@@ -13,6 +14,13 @@ enum class TaskPriority
     High
 };
 
+enum class TaskStatus
+{
+    Planned,
+    InProgress,
+    Completed
+};
+
 class Task
 {
 public:
@@ -20,22 +28,30 @@ public:
     Task(const QString& title,
          const QString& description,
          const QStringList& tags,
-         TaskPriority priority);
+         const QString& assignee,
+         TaskPriority priority,
+         TaskStatus status = TaskStatus::Planned);
 
     int id() const;
     QString title() const;
     QString description() const;
     QStringList tags() const;
+    QString assignee() const;
     TaskPriority priority() const;
+    TaskStatus status() const;
     QDate dueDate() const;
+    QDateTime createdAt() const;
     bool isCompleted() const;
 
     void setId(int id);
     void setTitle(const QString& title);
     void setDescription(const QString& description);
     void setTags(const QStringList& tags);
+    void setAssignee(const QString& assignee);
     void setPriority(TaskPriority priority);
+    void setStatus(TaskStatus status);
     void setDueDate(const QDate& date);
+    void setCreatedAt(const QDateTime& dateTime);
     void setCompleted(bool completed);
 
     QJsonObject toJson() const;
@@ -46,9 +62,11 @@ private:
     QString m_title;
     QString m_description;
     QStringList m_tags;
+    QString m_assignee;
     TaskPriority m_priority;
+    TaskStatus m_status;
     QDate m_dueDate;
-    bool m_completed;
+    QDateTime m_createdAt;
 };
 
 #endif

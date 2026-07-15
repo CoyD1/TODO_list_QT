@@ -29,8 +29,8 @@ private slots:
     void editSelectedTask();
     void removeSelectedTask();
     void toggleSelectedTask();
-    void applyTagFilter();
-    void resetTagFilter();
+    void applyFilters();
+    void resetFilters();
     void clearCompletedTasks();
     void saveTasksToFile();
     void loadTasksFromFile();
@@ -50,6 +50,7 @@ private:
     int selectedTaskIndex() const;
     QVector<QPair<int, Task>> visibleTasks() const;
     static QString priorityText(TaskPriority priority);
+    static QString taskStatusText(TaskStatus status);
     static int priorityWeight(TaskPriority priority);
     void setClientModeEnabled(bool enabled);
     QString defaultTasksFilePath() const;
@@ -62,10 +63,14 @@ private:
     QListWidget* m_taskList;
     QLineEdit* m_titleInput;
     QLineEdit* m_descriptionInput;
+    QLineEdit* m_assigneeInput;
     QLineEdit* m_tagsInput;
     QLineEdit* m_filterInput;
+    QLineEdit* m_assigneeFilterInput;
     QLineEdit* m_searchInput;
     QComboBox* m_priorityBox;
+    QComboBox* m_statusBox;
+    QComboBox* m_statusFilterBox;
     QDateEdit* m_dueDateInput;
     QComboBox* m_sortBox;
     QPushButton* m_addButton;
@@ -92,6 +97,8 @@ private:
     QLabel* m_connectionStatusLabel;
 
     QString m_activeFilter;
+    QString m_activeAssigneeFilter;
+    int m_activeStatusFilter;
     QString m_tasksFilePath;
     bool m_clientMode;
 };
