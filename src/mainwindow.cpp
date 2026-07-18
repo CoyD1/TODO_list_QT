@@ -18,6 +18,9 @@
 #include <QDateEdit>
 #include <QDateTime>
 #include <QTimer>
+#include <QSettings>
+#include <QHeaderView>
+#include <QListWidget>
 #include <algorithm>
 
 namespace
@@ -60,9 +63,15 @@ MainWindow::MainWindow(QWidget* parent)
     m_descriptionInput->setPlaceholderText("Описание задачи");
     inputLayout->addRow("Описание:", m_descriptionInput);
 
-    m_assigneeInput = new QLineEdit(this);
-    m_assigneeInput->setPlaceholderText("Имя участника команды");
-    inputLayout->addRow("Исполнитель:", m_assigneeInput);
+    QHBoxLayout* assigneeLayout = new QHBoxLayout();
+    m_assigneeInput = new QComboBox(this);
+    m_assigneeInput->setEditable(true);
+    m_assigneeInput->setInsertPolicy(QComboBox::NoInsert);
+    m_assigneeInput->lineEdit()->setPlaceholderText("Выберите или введите имя");
+    assigneeLayout->addWidget(m_assigneeInput, 1);
+    m_manageMembersButton = new QPushButton("Участники", this);
+    assigneeLayout->addWidget(m_manageMembersButton);
+    inputLayout->addRow("Исполнитель:", assigneeLayout);
 
     m_tagsInput = new QLineEdit(this);
     m_tagsInput->setPlaceholderText("учеба, срочно, работа");
@@ -171,8 +180,21 @@ MainWindow::MainWindow(QWidget* parent)
     // ── Список задач ──
     QGroupBox* listGroup = new QGroupBox("Задачи", this);
     QVBoxLayout* listLayout = new QVBoxLayout(listGroup);
-    m_taskList = new QListWidget(this);
-    listLayout->addWidget(m_taskList);
+    m_taskTable = new QTableWidget(this);
+    m_taskTable->setColumnCount(7);
+    m_taskTable->setHorizontalHeaderLabels({
+        "Статус", "Задача", "Исполнитель", "Приоритет",
+        "Срок", "Теги", "Создана"
+    });
+    m_taskTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_taskTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_taskTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_taskTable->setAlternatingRowColors(true);
+    m_taskTable->verticalHeader()->setVisible(false);
+    m_taskTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    m_taskTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    m_taskTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::Stretch);
+    listLayout->addWidget(m_taskTable);
     mainLayout->addWidget(listGroup, 1);
 
     // ── Статус строка ──
@@ -187,6 +209,8 @@ MainWindow::MainWindow(QWidget* parent)
             this, &MainWindow::editSelectedTask);
     connect(m_duplicateButton, &QPushButton::clicked,
             this, &MainWindow::duplicateSelectedTask);
+    connect(m_manageMembersButton, &QPushButton::clicked,
+            this, &MainWindow::manageTeamMembers);
     connect(m_removeButton, &QPushButton::clicked,
             this, &MainWindow::removeSelectedTask);
     connect(m_toggleButton, &QPushButton::clicked,
@@ -201,7 +225,7 @@ MainWindow::MainWindow(QWidget* parent)
             this, &MainWindow::saveTasksToFile);
     connect(m_loadButton, &QPushButton::clicked,
             this, &MainWindow::loadTasksFromFile);
-    connect(m_taskList, &QListWidget::itemDoubleClicked,
+    connect(m_taskTable, &QTableWidget::cellDoubleClicked,
             this, &MainWindow::editSelectedTask);
     connect(m_searchInput, &QLineEdit::textChanged,
             this, &MainWindow::updateTaskList);
@@ -216,8 +240,10 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_taskManager, &TaskManager::tasksChanged,
             this, &MainWindow::autoSaveTasks);
 
+    loadTeamMembers();
     m_tasksFilePath = defaultTasksFilePath();
     loadTasksFromPath(m_tasksFilePath, false);
+    refreshTeamMembersFromTasks();
 
     connect(m_client, &NetworkClient::connected,
             this, &MainWindow::onConnected);
@@ -240,7 +266,7 @@ void MainWindow::addTask()
 {
     QString title = m_titleInput->text().trimmed();
     QString description = m_descriptionInput->text().trimmed();
-    QString assignee = m_assigneeInput->text().trimmed();
+    QString assignee = m_assigneeInput->currentText().trimmed();
     QStringList tags = m_tagsInput->text().split(",", Qt::SkipEmptyParts);
 
     for (QString& tag : tags)
@@ -267,6 +293,7 @@ void MainWindow::addTask()
 
     TaskStatus status = static_cast<TaskStatus>(m_statusBox->currentIndex());
     Task task(title, description, tags, assignee, priority, status);
+    addTeamMember(assignee);
 
     if (m_dueDateInput->date().isValid())
     {
@@ -284,7 +311,7 @@ void MainWindow::addTask()
 
     m_titleInput->clear();
     m_descriptionInput->clear();
-    m_assigneeInput->clear();
+    m_assigneeInput->setEditText("");
     m_tagsInput->clear();
     m_statusBox->setCurrentIndex(0);
     m_dueDateInput->setDate(QDate::currentDate());
@@ -313,7 +340,10 @@ void MainWindow::editSelectedTask()
 
     QLineEdit* titleEdit = new QLineEdit(task.title(), &dialog);
     QLineEdit* descEdit = new QLineEdit(task.description(), &dialog);
-    QLineEdit* assigneeEdit = new QLineEdit(task.assignee(), &dialog);
+    QComboBox* assigneeEdit = new QComboBox(&dialog);
+    assigneeEdit->setEditable(true);
+    assigneeEdit->addItems(m_teamMembers);
+    assigneeEdit->setCurrentText(task.assignee());
     QLineEdit* tagsEdit = new QLineEdit(task.tags().join(", "), &dialog);
     QComboBox* priorityEdit = new QComboBox(&dialog);
     priorityEdit->addItem("Низкий");
@@ -373,10 +403,12 @@ void MainWindow::editSelectedTask()
     }
 
     TaskPriority priority = static_cast<TaskPriority>(priorityEdit->currentIndex());
+    const QString assignee = assigneeEdit->currentText().trimmed();
+    addTeamMember(assignee);
     Task updatedTask(title,
                      descEdit->text().trimmed(),
                      tags,
-                     assigneeEdit->text().trimmed(),
+                     assignee,
                      priority,
                      static_cast<TaskStatus>(statusEdit->currentIndex()));
     updatedTask.setCreatedAt(task.createdAt());
@@ -421,6 +453,148 @@ void MainWindow::duplicateSelectedTask()
     {
         m_taskManager->duplicateTask(index);
     }
+}
+
+void MainWindow::manageTeamMembers()
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle("Участники команды");
+    dialog.resize(380, 360);
+
+    QVBoxLayout* layout = new QVBoxLayout(&dialog);
+    QListWidget* memberList = new QListWidget(&dialog);
+    memberList->addItems(m_teamMembers);
+    layout->addWidget(memberList, 1);
+
+    QHBoxLayout* addLayout = new QHBoxLayout();
+    QLineEdit* nameInput = new QLineEdit(&dialog);
+    nameInput->setPlaceholderText("Имя участника");
+    QPushButton* addButton = new QPushButton("Добавить", &dialog);
+    addLayout->addWidget(nameInput, 1);
+    addLayout->addWidget(addButton);
+    layout->addLayout(addLayout);
+
+    QPushButton* removeButton = new QPushButton("Удалить выбранного", &dialog);
+    layout->addWidget(removeButton);
+
+    QDialogButtonBox* buttons = new QDialogButtonBox(
+        QDialogButtonBox::Close, &dialog);
+    layout->addWidget(buttons);
+
+    auto addMemberToDialog = [memberList, nameInput]()
+    {
+        const QString name = nameInput->text().trimmed();
+        if (name.isEmpty())
+        {
+            return;
+        }
+
+        for (int i = 0; i < memberList->count(); ++i)
+        {
+            if (memberList->item(i)->text().compare(name, Qt::CaseInsensitive) == 0)
+            {
+                memberList->setCurrentRow(i);
+                return;
+            }
+        }
+
+        memberList->addItem(name);
+        nameInput->clear();
+    };
+
+    connect(addButton, &QPushButton::clicked, &dialog, addMemberToDialog);
+    connect(nameInput, &QLineEdit::returnPressed, &dialog, addMemberToDialog);
+    connect(removeButton, &QPushButton::clicked, &dialog,
+            [this, memberList, &dialog]()
+            {
+                QListWidgetItem* item = memberList->currentItem();
+                if (!item)
+                {
+                    return;
+                }
+
+                const QString name = item->text();
+                for (const Task& task : m_taskManager->tasks())
+                {
+                    if (task.assignee().compare(name, Qt::CaseInsensitive) == 0)
+                    {
+                        QMessageBox::information(
+                            &dialog,
+                            "Участники команды",
+                            "Нельзя удалить участника, пока ему назначены задачи");
+                        return;
+                    }
+                }
+
+                delete memberList->takeItem(memberList->currentRow());
+            });
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    dialog.exec();
+
+    m_teamMembers.clear();
+    for (int i = 0; i < memberList->count(); ++i)
+    {
+        m_teamMembers.append(memberList->item(i)->text());
+    }
+
+    m_teamMembers.sort(Qt::CaseInsensitive);
+    saveTeamMembers();
+
+    const QString currentText = m_assigneeInput->currentText();
+    m_assigneeInput->clear();
+    m_assigneeInput->addItems(m_teamMembers);
+    m_assigneeInput->setEditText(currentText);
+}
+
+void MainWindow::addTeamMember(const QString& name)
+{
+    const QString trimmedName = name.trimmed();
+    if (trimmedName.isEmpty())
+    {
+        return;
+    }
+
+    for (const QString& member : m_teamMembers)
+    {
+        if (member.compare(trimmedName, Qt::CaseInsensitive) == 0)
+        {
+            return;
+        }
+    }
+
+    const QString currentText = m_assigneeInput->currentText();
+    m_teamMembers.append(trimmedName);
+    m_teamMembers.sort(Qt::CaseInsensitive);
+    m_assigneeInput->clear();
+    m_assigneeInput->addItems(m_teamMembers);
+    m_assigneeInput->setEditText(currentText);
+    saveTeamMembers();
+}
+
+void MainWindow::refreshTeamMembersFromTasks()
+{
+    for (const Task& task : m_taskManager->tasks())
+    {
+        addTeamMember(task.assignee());
+    }
+}
+
+void MainWindow::loadTeamMembers()
+{
+    QSettings settings("TODO_lists_QT", "TODO_lists_QT");
+    m_teamMembers = settings.value("team/members").toStringList();
+    m_teamMembers.removeDuplicates();
+    m_teamMembers.sort(Qt::CaseInsensitive);
+    m_assigneeInput->clear();
+    m_assigneeInput->addItems(m_teamMembers);
+    m_assigneeInput->setEditText("");
+}
+
+void MainWindow::saveTeamMembers() const
+{
+    QSettings settings("TODO_lists_QT", "TODO_lists_QT");
+    settings.setValue("team/members", m_teamMembers);
 }
 
 void MainWindow::removeSelectedTask()
@@ -536,6 +710,7 @@ bool MainWindow::loadTasksFromPath(const QString& filePath, bool showMessage)
     }
 
     m_taskManager->setTasks(tasks);
+    refreshTeamMembersFromTasks();
     m_tasksFilePath = filePath;
 
     if (showMessage)
@@ -596,14 +771,15 @@ void MainWindow::autoSaveTasks()
 
 int MainWindow::selectedTaskIndex() const
 {
-    QListWidgetItem* item = m_taskList->currentItem();
+    const int row = m_taskTable->currentRow();
 
-    if (!item)
+    if (row < 0)
     {
         return -1;
     }
 
-    return item->data(Qt::UserRole).toInt();
+    QTableWidgetItem* item = m_taskTable->item(row, 0);
+    return item ? item->data(Qt::UserRole).toInt() : -1;
 }
 
 QString MainWindow::priorityText(TaskPriority priority)
@@ -752,92 +928,84 @@ QVector<QPair<int, Task>> MainWindow::visibleTasks() const
 
 void MainWindow::updateTaskList()
 {
-    m_taskList->clear();
-
     QVector<QPair<int, Task>> tasks = visibleTasks();
+    m_taskTable->setUpdatesEnabled(false);
+    m_taskTable->clearContents();
+    m_taskTable->setRowCount(tasks.size());
 
-    for (const QPair<int, Task>& entry : tasks)
+    for (int row = 0; row < tasks.size(); ++row)
     {
+        const QPair<int, Task>& entry = tasks[row];
         const Task& task = entry.second;
         const int sourceIndex = entry.first;
 
-        QString statusText;
-        if (task.status() == TaskStatus::Completed)
-        {
-            statusText = "[✓]";
-        }
-        else if (task.status() == TaskStatus::InProgress)
-        {
-            statusText = "[~]";
-        }
-        else
-        {
-            statusText = "[ ]";
-        }
-
-        QString itemText = statusText + " "
-                           + task.title()
-                           + " | Статус: " + taskStatusText(task.status())
-                           + " | Приоритет: " + priorityText(task.priority());
-
-        if (task.createdAt().isValid())
-        {
-            itemText += " | Создана: " + task.createdAt().toString("dd.MM.yyyy HH:mm");
-        }
-
+        QString dueDateText = "—";
         if (task.dueDate().isValid())
         {
-            itemText += " | Срок: " + task.dueDate().toString("dd.MM.yyyy");
-
+            dueDateText = task.dueDate().toString("dd.MM.yyyy");
             if (task.isOverdue())
             {
-                itemText += " (просрочена)";
+                dueDateText += " · просрочена";
             }
         }
 
-        if (!task.assignee().isEmpty())
-        {
-            itemText += " | Исполнитель: " + task.assignee();
-        }
+        const QString createdText = task.createdAt().isValid()
+                                        ? task.createdAt().toString("dd.MM.yyyy HH:mm")
+                                        : "—";
+        const QString assigneeText = task.assignee().isEmpty() ? "Не назначен" : task.assignee();
 
-        itemText += " | Теги: " + task.tags().join(", ");
+        QTableWidgetItem* statusItem = new QTableWidgetItem(taskStatusText(task.status()));
+        QTableWidgetItem* titleItem = new QTableWidgetItem(task.title());
+        QTableWidgetItem* assigneeItem = new QTableWidgetItem(assigneeText);
+        QTableWidgetItem* priorityItem = new QTableWidgetItem(priorityText(task.priority()));
+        QTableWidgetItem* dueDateItem = new QTableWidgetItem(dueDateText);
+        QTableWidgetItem* tagsItem = new QTableWidgetItem(task.tags().join(", "));
+        QTableWidgetItem* createdItem = new QTableWidgetItem(createdText);
 
-        if (!task.description().isEmpty())
-        {
-            itemText += " | " + task.description();
-        }
+        statusItem->setData(Qt::UserRole, sourceIndex);
+        titleItem->setToolTip(task.description());
 
-        QListWidgetItem* item = new QListWidgetItem(itemText, m_taskList);
-        item->setData(Qt::UserRole, sourceIndex);
+        m_taskTable->setItem(row, 0, statusItem);
+        m_taskTable->setItem(row, 1, titleItem);
+        m_taskTable->setItem(row, 2, assigneeItem);
+        m_taskTable->setItem(row, 3, priorityItem);
+        m_taskTable->setItem(row, 4, dueDateItem);
+        m_taskTable->setItem(row, 5, tagsItem);
+        m_taskTable->setItem(row, 6, createdItem);
 
         if (task.isCompleted())
         {
-            QFont font = item->font();
+            QFont font = titleItem->font();
             font.setStrikeOut(true);
-            item->setFont(font);
+            titleItem->setFont(font);
+
+            for (int column = 0; column < m_taskTable->columnCount(); ++column)
+            {
+                m_taskTable->item(row, column)->setForeground(QColor("#808080"));
+            }
+        }
+        else if (task.isOverdue())
+        {
+            dueDateItem->setForeground(QColor("#C0392B"));
+            titleItem->setForeground(QColor("#C0392B"));
         }
         else
         {
-            if (task.isOverdue())
+            switch (task.priority())
             {
-                item->setForeground(Qt::red);
-            }
-            else
-            {
-                switch (task.priority())
-                {
-                case TaskPriority::High:
-                    item->setForeground(QColor("#C0392B"));
-                    break;
-                case TaskPriority::Low:
-                    item->setForeground(QColor("#27AE60"));
-                    break;
-                default:
-                    break;
-                }
+            case TaskPriority::High:
+                priorityItem->setForeground(QColor("#C0392B"));
+                break;
+            case TaskPriority::Low:
+                priorityItem->setForeground(QColor("#27864A"));
+                break;
+            default:
+                break;
             }
         }
     }
+
+    m_taskTable->setUpdatesEnabled(true);
 
     int total = m_taskManager->tasks().size();
     int completed = m_taskManager->completedCount();
@@ -1100,6 +1268,7 @@ void MainWindow::onConnectionError(const QString& error)
 void MainWindow::onTasksReceived(const QVector<Task>& tasks)
 {
     m_taskManager->setTasks(tasks);
+    refreshTeamMembersFromTasks();
 }
 
 void MainWindow::setClientModeEnabled(bool enabled)

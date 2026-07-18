@@ -2,7 +2,7 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
-#include <QListWidget>
+#include <QTableWidget>
 #include <QPushButton>
 #include <QLineEdit>
 #include <QComboBox>
@@ -29,6 +29,7 @@ private slots:
     void editSelectedTask();
     void removeSelectedTask();
     void duplicateSelectedTask();
+    void manageTeamMembers();
     void toggleSelectedTask();
     void applyFilters();
     void resetFilters();
@@ -60,6 +61,10 @@ private:
     void startDiscoveryResponder();
     void stopDiscoverySearch();
     void updateSyncStatus();
+    void addTeamMember(const QString& name);
+    void refreshTeamMembersFromTasks();
+    void loadTeamMembers();
+    void saveTeamMembers() const;
     void setClientModeEnabled(bool enabled);
     QString defaultTasksFilePath() const;
     bool loadTasksFromPath(const QString& filePath, bool showMessage);
@@ -68,10 +73,11 @@ private:
     TaskServer* m_server;
     NetworkClient* m_client;
 
-    QListWidget* m_taskList;
+    QTableWidget* m_taskTable;
     QLineEdit* m_titleInput;
     QLineEdit* m_descriptionInput;
-    QLineEdit* m_assigneeInput;
+    QComboBox* m_assigneeInput;
+    QPushButton* m_manageMembersButton;
     QLineEdit* m_tagsInput;
     QLineEdit* m_filterInput;
     QLineEdit* m_assigneeFilterInput;
@@ -102,6 +108,7 @@ private:
     QString m_syncHost;
     quint16 m_syncPort;
     bool m_autoSyncInProgress;
+    QStringList m_teamMembers;
     QString m_activeFilter;
     QString m_activeAssigneeFilter;
     int m_activeStatusFilter;
