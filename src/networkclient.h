@@ -13,7 +13,7 @@ class NetworkClient : public QObject
 public:
     explicit NetworkClient(QObject* parent = nullptr);
 
-    bool connectToServer(const QString& host, quint16 port);
+    bool connectToServer(const QString& host, quint16 port, int timeoutMs = 1500);
     void disconnectFromServer();
     bool isConnected() const;
 

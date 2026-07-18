@@ -19,10 +19,15 @@ NetworkClient::NetworkClient(QObject* parent)
             this, &NetworkClient::onReadyRead);
 }
 
-bool NetworkClient::connectToServer(const QString& host, quint16 port)
+bool NetworkClient::connectToServer(const QString& host, quint16 port, int timeoutMs)
 {
+    if (m_socket->state() != QAbstractSocket::UnconnectedState)
+    {
+        m_socket->abort();
+    }
+
     m_socket->connectToHost(host, port);
-    return m_socket->waitForConnected(3000);
+    return m_socket->waitForConnected(timeoutMs);
 }
 
 void NetworkClient::disconnectFromServer()

@@ -38,6 +38,18 @@ target_link_libraries(TODO_lists_QT
         Qt::Network
 )
 
+if(WIN32 AND MINGW)
+    get_filename_component(MINGW_BIN_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    add_custom_command(TARGET TODO_lists_QT POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${MINGW_BIN_DIR}/libgcc_s_seh-1.dll"
+            "${MINGW_BIN_DIR}/libstdc++-6.dll"
+            "${MINGW_BIN_DIR}/libwinpthread-1.dll"
+            "$<TARGET_FILE_DIR:TODO_lists_QT>"
+        COMMENT "Copying MinGW runtime libraries"
+    )
+endif()
+
 install(TARGETS TODO_lists_QT
     BUNDLE  DESTINATION .
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}

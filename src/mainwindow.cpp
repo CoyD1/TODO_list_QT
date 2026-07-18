@@ -17,19 +17,32 @@
 #include <QFile>
 #include <QDateEdit>
 #include <QDateTime>
+#include <QTimer>
 #include <algorithm>
+
+namespace
+{
+constexpr quint16 DiscoveryPort = 45454;
+const QByteArray DiscoveryRequest = "TODO_LIST_DISCOVER_V1";
+const QByteArray DiscoveryResponse = "TODO_LIST_SERVER_V1:";
+}
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent),
     m_taskManager(new TaskManager(this)),
     m_server(nullptr),
     m_client(new NetworkClient(this)),
+    m_discoveryClient(nullptr),
+    m_discoveryServer(nullptr),
+    m_syncHost("127.0.0.1"),
+    m_syncPort(9999),
+    m_autoSyncInProgress(false),
     m_activeStatusFilter(-1),
     m_clientMode(false),
     m_connectedClients(0)
 {
-    setWindowTitle("Network TODO List");
-    resize(800, 700);
+    setWindowTitle("Командный TODO-лист");
+    resize(960, 760);
 
     QWidget* centralWidget = new QWidget(this);
     QVBoxLayout* mainLayout = new QVBoxLayout(centralWidget);
@@ -147,50 +160,13 @@ MainWindow::MainWindow(QWidget* parent)
 
     mainLayout->addWidget(filterGroup);
 
-    // ── Сеть ──
-    QGroupBox* netGroup = new QGroupBox("Сеть", this);
-    QVBoxLayout* netLayout = new QVBoxLayout(netGroup);
-
-    QHBoxLayout* serverRow = new QHBoxLayout();
-    serverRow->addWidget(new QLabel("Сервер: порт"));
-    m_serverPortInput = new QSpinBox(this);
-    m_serverPortInput->setRange(1024, 65535);
-    m_serverPortInput->setValue(9999);
-    serverRow->addWidget(m_serverPortInput);
-    m_startServerButton = new QPushButton("Запустить", this);
-    serverRow->addWidget(m_startServerButton);
-    m_stopServerButton = new QPushButton("Остановить", this);
-    m_stopServerButton->setEnabled(false);
-    serverRow->addWidget(m_stopServerButton);
-    m_serverStatusLabel = new QLabel("Сервер не запущен", this);
-    serverRow->addWidget(m_serverStatusLabel);
-    serverRow->addStretch();
-    netLayout->addLayout(serverRow);
-
-    QHBoxLayout* clientRow = new QHBoxLayout();
-    clientRow->addWidget(new QLabel("Клиент:"));
-    m_serverHostInput = new QLineEdit(this);
-    m_serverHostInput->setPlaceholderText("127.0.0.1");
-    m_serverHostInput->setText("127.0.0.1");
-    m_serverHostInput->setMaximumWidth(130);
-    clientRow->addWidget(m_serverHostInput);
-    clientRow->addWidget(new QLabel(":"));
-    m_clientPortInput = new QSpinBox(this);
-    m_clientPortInput->setRange(1024, 65535);
-    m_clientPortInput->setValue(9999);
-    m_clientPortInput->setMaximumWidth(80);
-    clientRow->addWidget(m_clientPortInput);
-    m_connectButton = new QPushButton("Подключиться", this);
-    clientRow->addWidget(m_connectButton);
-    m_disconnectButton = new QPushButton("Отключиться", this);
-    m_disconnectButton->setEnabled(false);
-    clientRow->addWidget(m_disconnectButton);
-    m_connectionStatusLabel = new QLabel("Не подключён", this);
-    clientRow->addWidget(m_connectionStatusLabel);
-    clientRow->addStretch();
-    netLayout->addLayout(clientRow);
-
-    mainLayout->addWidget(netGroup);
+    // ── Совместная работа ──
+    QGroupBox* syncGroup = new QGroupBox("Совместная работа", this);
+    QHBoxLayout* syncLayout = new QHBoxLayout(syncGroup);
+    m_syncStatusLabel = new QLabel("Настройка синхронизации...", this);
+    syncLayout->addWidget(m_syncStatusLabel);
+    syncLayout->addStretch();
+    mainLayout->addWidget(syncGroup);
 
     // ── Список задач ──
     QGroupBox* listGroup = new QGroupBox("Задачи", this);
@@ -243,17 +219,6 @@ MainWindow::MainWindow(QWidget* parent)
     m_tasksFilePath = defaultTasksFilePath();
     loadTasksFromPath(m_tasksFilePath, false);
 
-    // Server buttons
-    connect(m_startServerButton, &QPushButton::clicked,
-            this, &MainWindow::startServer);
-    connect(m_stopServerButton, &QPushButton::clicked,
-            this, &MainWindow::stopServer);
-
-    // Client buttons
-    connect(m_connectButton, &QPushButton::clicked,
-            this, &MainWindow::connectToServer);
-    connect(m_disconnectButton, &QPushButton::clicked,
-            this, &MainWindow::disconnectFromServer);
     connect(m_client, &NetworkClient::connected,
             this, &MainWindow::onConnected);
     connect(m_client, &NetworkClient::disconnected,
@@ -264,6 +229,7 @@ MainWindow::MainWindow(QWidget* parent)
             this, &MainWindow::onTasksReceived);
 
     updateTaskList();
+    QTimer::singleShot(0, this, &MainWindow::startAutomaticSync);
 }
 
 MainWindow::~MainWindow()
@@ -529,7 +495,21 @@ void MainWindow::resetFilters()
 
 void MainWindow::clearCompletedTasks()
 {
-    m_taskManager->clearCompleted();
+    if (m_clientMode)
+    {
+        const QVector<Task> tasks = m_taskManager->tasks();
+        for (const Task& task : tasks)
+        {
+            if (task.isCompleted())
+            {
+                m_client->sendRemoveTask(task.id());
+            }
+        }
+    }
+    else
+    {
+        m_taskManager->clearCompleted();
+    }
 }
 
 QString MainWindow::defaultTasksFilePath() const
@@ -889,21 +869,108 @@ void MainWindow::updateTaskList()
         statusText += QString(" | Поиск: %1").arg(m_searchInput->text().trimmed());
     }
 
-    if (m_clientMode)
-    {
-        statusText += " | Режим: клиент";
-    }
-
     m_statusLabel->setText(statusText);
 }
 
-// --- Server ---
+void MainWindow::startAutomaticSync()
+{
+    if (m_autoSyncInProgress)
+    {
+        return;
+    }
 
-void MainWindow::startServer()
+    if (m_client->isConnected() || m_server)
+    {
+        updateSyncStatus();
+        return;
+    }
+
+    m_autoSyncInProgress = true;
+    m_syncStatusLabel->setStyleSheet("color: #666666;");
+    m_syncStatusLabel->setText("Поиск общего списка в локальной сети...");
+
+    stopDiscoverySearch();
+    m_discoveryClient = new QUdpSocket(this);
+    connect(m_discoveryClient, &QUdpSocket::readyRead,
+            this, &MainWindow::onDiscoveryResponse);
+
+    m_discoveryClient->writeDatagram(
+        DiscoveryRequest, QHostAddress::LocalHost, DiscoveryPort);
+    m_discoveryClient->writeDatagram(
+        DiscoveryRequest, QHostAddress::Broadcast, DiscoveryPort);
+
+    QTimer::singleShot(900, this, &MainWindow::finishAutomaticSyncSearch);
+}
+
+void MainWindow::finishAutomaticSyncSearch()
+{
+    if (!m_autoSyncInProgress || m_client->isConnected())
+    {
+        return;
+    }
+
+    stopDiscoverySearch();
+
+    if (startLocalServer(m_syncPort))
+    {
+        m_autoSyncInProgress = false;
+        updateSyncStatus();
+        return;
+    }
+
+    m_autoSyncInProgress = false;
+    m_syncStatusLabel->setStyleSheet("color: #B9770E;");
+    m_syncStatusLabel->setText("Общий список найден · подключение...");
+    QTimer::singleShot(350, this, &MainWindow::startAutomaticSync);
+}
+
+void MainWindow::onDiscoveryResponse()
+{
+    while (m_discoveryClient && m_discoveryClient->hasPendingDatagrams())
+    {
+        QHostAddress senderAddress;
+        quint16 senderPort = 0;
+        QByteArray data;
+        data.resize(static_cast<int>(m_discoveryClient->pendingDatagramSize()));
+        m_discoveryClient->readDatagram(
+            data.data(), data.size(), &senderAddress, &senderPort);
+
+        if (!data.startsWith(DiscoveryResponse))
+        {
+            continue;
+        }
+
+        bool portOk = false;
+        const quint16 port = data.mid(DiscoveryResponse.size()).toUShort(&portOk);
+        if (!portOk)
+        {
+            continue;
+        }
+
+        m_syncHost = senderAddress.isLoopback()
+                         ? QString("127.0.0.1")
+                         : senderAddress.toString();
+        m_syncPort = port;
+        stopDiscoverySearch();
+
+        if (m_client->connectToServer(m_syncHost, m_syncPort, 1500))
+        {
+            m_autoSyncInProgress = false;
+            updateSyncStatus();
+            return;
+        }
+
+        m_autoSyncInProgress = false;
+        QTimer::singleShot(350, this, &MainWindow::startAutomaticSync);
+        return;
+    }
+}
+
+bool MainWindow::startLocalServer(quint16 port)
 {
     if (m_server)
     {
-        return;
+        return true;
     }
 
     m_server = new TaskServer(m_taskManager, this);
@@ -912,22 +979,21 @@ void MainWindow::startServer()
     connect(m_server, &TaskServer::clientDisconnected,
             this, &MainWindow::onServerClientDisconnected);
 
-    if (!m_server->start(static_cast<quint16>(m_serverPortInput->value())))
+    if (!m_server->start(port))
     {
-        QMessageBox::warning(this, "Ошибка", "Не удалось запустить сервер");
         delete m_server;
         m_server = nullptr;
-        return;
+        return false;
     }
 
-    m_serverStatusLabel->setText("Сервер запущен");
-    m_startServerButton->setEnabled(false);
-    m_stopServerButton->setEnabled(true);
-    m_serverPortInput->setEnabled(false);
-    updateServerStatusLabel();
+    m_connectedClients = 0;
+    setClientModeEnabled(false);
+    startDiscoveryResponder();
+    updateSyncStatus();
+    return true;
 }
 
-void MainWindow::stopServer()
+void MainWindow::stopLocalServer()
 {
     if (!m_server)
     {
@@ -939,57 +1005,96 @@ void MainWindow::stopServer()
     m_server = nullptr;
     m_connectedClients = 0;
 
-    m_serverStatusLabel->setText("Сервер не запущен");
-    m_startServerButton->setEnabled(true);
-    m_stopServerButton->setEnabled(false);
-    m_serverPortInput->setEnabled(true);
-}
-
-// --- Client ---
-
-void MainWindow::connectToServer()
-{
-    QString host = m_serverHostInput->text().trimmed();
-
-    if (host.isEmpty())
+    if (m_discoveryServer)
     {
-        host = "127.0.0.1";
-    }
-
-    if (!m_client->connectToServer(host, static_cast<quint16>(m_clientPortInput->value())))
-    {
-        QMessageBox::warning(this, "Ошибка", "Не удалось подключиться к серверу");
+        m_discoveryServer->close();
+        m_discoveryServer->deleteLater();
+        m_discoveryServer = nullptr;
     }
 }
 
-void MainWindow::disconnectFromServer()
+void MainWindow::startDiscoveryResponder()
 {
-    m_client->disconnectFromServer();
+    if (m_discoveryServer)
+    {
+        return;
+    }
+
+    m_discoveryServer = new QUdpSocket(this);
+    const bool bound = m_discoveryServer->bind(
+        QHostAddress::AnyIPv4,
+        DiscoveryPort,
+        QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint);
+
+    if (!bound)
+    {
+        m_discoveryServer->deleteLater();
+        m_discoveryServer = nullptr;
+        return;
+    }
+
+    connect(m_discoveryServer, &QUdpSocket::readyRead,
+            this, &MainWindow::onDiscoveryRequest);
+}
+
+void MainWindow::onDiscoveryRequest()
+{
+    while (m_discoveryServer && m_discoveryServer->hasPendingDatagrams())
+    {
+        QHostAddress senderAddress;
+        quint16 senderPort = 0;
+        QByteArray data;
+        data.resize(static_cast<int>(m_discoveryServer->pendingDatagramSize()));
+        m_discoveryServer->readDatagram(
+            data.data(), data.size(), &senderAddress, &senderPort);
+
+        if (data == DiscoveryRequest && m_server)
+        {
+            const QByteArray response = DiscoveryResponse
+                                        + QByteArray::number(m_syncPort);
+            m_discoveryServer->writeDatagram(
+                response, senderAddress, senderPort);
+        }
+    }
+}
+
+void MainWindow::stopDiscoverySearch()
+{
+    if (!m_discoveryClient)
+    {
+        return;
+    }
+
+    m_discoveryClient->close();
+    m_discoveryClient->deleteLater();
+    m_discoveryClient = nullptr;
 }
 
 void MainWindow::onConnected()
 {
-    m_connectionStatusLabel->setText("Подключён");
-    m_connectButton->setEnabled(false);
-    m_disconnectButton->setEnabled(true);
-    m_serverHostInput->setEnabled(false);
-    m_clientPortInput->setEnabled(false);
     setClientModeEnabled(true);
+    updateSyncStatus();
 }
 
 void MainWindow::onDisconnected()
 {
-    m_connectionStatusLabel->setText("Не подключён");
-    m_connectButton->setEnabled(true);
-    m_disconnectButton->setEnabled(false);
-    m_serverHostInput->setEnabled(true);
-    m_clientPortInput->setEnabled(true);
     setClientModeEnabled(false);
+
+    if (!m_autoSyncInProgress && !m_server)
+    {
+        m_syncStatusLabel->setStyleSheet("color: #B9770E;");
+        m_syncStatusLabel->setText("Соединение потеряно · переподключение...");
+        QTimer::singleShot(1200, this, &MainWindow::startAutomaticSync);
+    }
 }
 
 void MainWindow::onConnectionError(const QString& error)
 {
-    QMessageBox::warning(this, "Ошибка подключения", error);
+    if (!m_autoSyncInProgress)
+    {
+        m_syncStatusLabel->setStyleSheet("color: #B03A2E;");
+        m_syncStatusLabel->setText("Ошибка синхронизации: " + error);
+    }
 }
 
 void MainWindow::onTasksReceived(const QVector<Task>& tasks)
@@ -1005,7 +1110,7 @@ void MainWindow::setClientModeEnabled(bool enabled)
 void MainWindow::onServerClientConnected()
 {
     ++m_connectedClients;
-    updateServerStatusLabel();
+    updateSyncStatus();
 }
 
 void MainWindow::onServerClientDisconnected()
@@ -1015,17 +1120,23 @@ void MainWindow::onServerClientDisconnected()
         --m_connectedClients;
     }
 
-    updateServerStatusLabel();
+    updateSyncStatus();
 }
 
-void MainWindow::updateServerStatusLabel()
+void MainWindow::updateSyncStatus()
 {
-    if (!m_server)
+    if (m_client->isConnected())
     {
-        m_serverStatusLabel->setText("Сервер не запущен");
+        m_syncStatusLabel->setStyleSheet("color: #1E8449;");
+        m_syncStatusLabel->setText("● Общий список подключён автоматически");
         return;
     }
 
-    m_serverStatusLabel->setText(
-        QString("Сервер запущен | Клиентов: %1").arg(m_connectedClients));
+    if (m_server)
+    {
+        m_syncStatusLabel->setStyleSheet("color: #2874A6;");
+        m_syncStatusLabel->setText(
+            QString("● Общий список создан · участников: %1")
+                .arg(m_connectedClients + 1));
+    }
 }
