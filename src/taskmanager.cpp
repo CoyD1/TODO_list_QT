@@ -104,7 +104,7 @@ void TaskManager::setTasks(const QVector<Task>& tasks)
     emit tasksChanged();
 }
 
-QVector<Task> TaskManager::tasks() const
+const QVector<Task>& TaskManager::tasks() const
 {
     return m_tasks;
 }

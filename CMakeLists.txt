@@ -1,12 +1,17 @@
 cmake_minimum_required(VERSION 3.19)
 project(TODO_lists_QT LANGUAGES CXX)
 
+include(GNUInstallDirs)
+
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
 endif()
 
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets Network)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets Network)
@@ -40,13 +45,19 @@ target_link_libraries(TODO_lists_QT
 
 if(WIN32 AND MINGW)
     get_filename_component(MINGW_BIN_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    set(MINGW_RUNTIME_LIBRARIES
+        "${MINGW_BIN_DIR}/libgcc_s_seh-1.dll"
+        "${MINGW_BIN_DIR}/libstdc++-6.dll"
+        "${MINGW_BIN_DIR}/libwinpthread-1.dll"
+    )
     add_custom_command(TARGET TODO_lists_QT POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${MINGW_BIN_DIR}/libgcc_s_seh-1.dll"
-            "${MINGW_BIN_DIR}/libstdc++-6.dll"
-            "${MINGW_BIN_DIR}/libwinpthread-1.dll"
+            ${MINGW_RUNTIME_LIBRARIES}
             "$<TARGET_FILE_DIR:TODO_lists_QT>"
         COMMENT "Copying MinGW runtime libraries"
+    )
+    install(FILES ${MINGW_RUNTIME_LIBRARIES}
+        DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
 endif()
 

@@ -96,7 +96,13 @@ MainWindow::MainWindow(QWidget* parent)
     m_dueDateInput = new QDateEdit(this);
     m_dueDateInput->setCalendarPopup(true);
     m_dueDateInput->setDate(QDate::currentDate());
+    m_dueDateInput->setEnabled(false);
     rowLayout->addWidget(m_dueDateInput);
+    m_noDueDateBox = new QCheckBox("Без срока", this);
+    m_noDueDateBox->setChecked(true);
+    rowLayout->addWidget(m_noDueDateBox);
+    connect(m_noDueDateBox, &QCheckBox::toggled,
+            m_dueDateInput, &QWidget::setDisabled);
     rowLayout->addStretch();
     inputLayout->addRow("", rowLayout);
 
@@ -295,7 +301,7 @@ void MainWindow::addTask()
     Task task(title, description, tags, assignee, priority, status);
     addTeamMember(assignee);
 
-    if (m_dueDateInput->date().isValid())
+    if (!m_noDueDateBox->isChecked() && m_dueDateInput->date().isValid())
     {
         task.setDueDate(m_dueDateInput->date());
     }
@@ -315,6 +321,7 @@ void MainWindow::addTask()
     m_tagsInput->clear();
     m_statusBox->setCurrentIndex(0);
     m_dueDateInput->setDate(QDate::currentDate());
+    m_noDueDateBox->setChecked(true);
 }
 
 void MainWindow::editSelectedTask()
@@ -359,7 +366,7 @@ void MainWindow::editSelectedTask()
 
     QDateEdit* dueDateEdit = new QDateEdit(&dialog);
     dueDateEdit->setCalendarPopup(true);
-    dueDateEdit->setSpecialValueText("Без срока");
+    QCheckBox* noDueDateBox = new QCheckBox("Без срока", &dialog);
 
     if (task.dueDate().isValid())
     {
@@ -369,6 +376,15 @@ void MainWindow::editSelectedTask()
     {
         dueDateEdit->setDate(QDate::currentDate());
     }
+    noDueDateBox->setChecked(!task.dueDate().isValid());
+    dueDateEdit->setEnabled(task.dueDate().isValid());
+    connect(noDueDateBox, &QCheckBox::toggled,
+            dueDateEdit, &QWidget::setDisabled);
+
+    QHBoxLayout* dueDateLayout = new QHBoxLayout();
+    dueDateLayout->addWidget(dueDateEdit);
+    dueDateLayout->addWidget(noDueDateBox);
+    dueDateLayout->addStretch();
 
     form->addRow("Название:", titleEdit);
     form->addRow("Описание:", descEdit);
@@ -376,7 +392,7 @@ void MainWindow::editSelectedTask()
     form->addRow("Теги:", tagsEdit);
     form->addRow("Приоритет:", priorityEdit);
     form->addRow("Статус:", statusEdit);
-    form->addRow("Срок:", dueDateEdit);
+    form->addRow("Срок:", dueDateLayout);
 
     QDialogButtonBox* buttons = new QDialogButtonBox(
         QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
@@ -413,7 +429,7 @@ void MainWindow::editSelectedTask()
                      static_cast<TaskStatus>(statusEdit->currentIndex()));
     updatedTask.setCreatedAt(task.createdAt());
 
-    if (dueDateEdit->date().isValid())
+    if (!noDueDateBox->isChecked() && dueDateEdit->date().isValid())
     {
         updatedTask.setDueDate(dueDateEdit->date());
     }
@@ -947,6 +963,10 @@ void MainWindow::updateTaskList()
             {
                 dueDateText += " · просрочена";
             }
+            else if (task.isDueSoon())
+            {
+                dueDateText += " · скоро";
+            }
         }
 
         const QString createdText = task.createdAt().isValid()
@@ -988,6 +1008,15 @@ void MainWindow::updateTaskList()
         {
             dueDateItem->setForeground(QColor("#C0392B"));
             titleItem->setForeground(QColor("#C0392B"));
+        }
+        else if (task.isDueSoon())
+        {
+            for (int column = 0; column < m_taskTable->columnCount(); ++column)
+            {
+                m_taskTable->item(row, column)->setBackground(QColor("#FFF4CE"));
+            }
+            dueDateItem->setForeground(QColor("#A15C00"));
+            titleItem->setForeground(QColor("#A15C00"));
         }
         else
         {
@@ -1274,6 +1303,7 @@ void MainWindow::onTasksReceived(const QVector<Task>& tasks)
 void MainWindow::setClientModeEnabled(bool enabled)
 {
     m_clientMode = enabled;
+    m_loadButton->setEnabled(!enabled);
 }
 
 void MainWindow::onServerClientConnected()

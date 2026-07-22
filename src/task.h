@@ -43,6 +43,7 @@ public:
     QDateTime createdAt() const;
     bool isCompleted() const;
     bool isOverdue() const;
+    bool isDueSoon(int days = 3) const;
 
     void setId(int id);
     void setTitle(const QString& title);

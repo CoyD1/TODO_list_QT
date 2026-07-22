@@ -19,7 +19,7 @@ public:
     void clearCompleted();
     void updateTask(int index, const Task& task);
     void setTasks(const QVector<Task>& tasks);
-    QVector<Task> tasks() const;
+    const QVector<Task>& tasks() const;
     QVector<Task> filterByTag(const QString& tag) const;
     int completedCount() const;
     int overdueCount() const;

@@ -84,6 +84,16 @@ bool Task::isOverdue() const
            && m_dueDate < QDate::currentDate();
 }
 
+bool Task::isDueSoon(int days) const
+{
+    const QDate today = QDate::currentDate();
+    return days >= 0
+           && m_dueDate.isValid()
+           && !isCompleted()
+           && m_dueDate >= today
+           && m_dueDate <= today.addDays(days);
+}
+
 void Task::setId(int id)
 {
     m_id = id;

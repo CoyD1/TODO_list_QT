@@ -86,6 +86,7 @@ private:
     QComboBox* m_statusBox;
     QComboBox* m_statusFilterBox;
     QDateEdit* m_dueDateInput;
+    QCheckBox* m_noDueDateBox;
     QComboBox* m_sortBox;
     QPushButton* m_addButton;
     QPushButton* m_editButton;
