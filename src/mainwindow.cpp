@@ -22,6 +22,8 @@
 #include <QHeaderView>
 #include <QListWidget>
 #include <QHostAddress>
+#include <QPalette>
+#include <QColor>
 #include <memory>
 #include <algorithm>
 
@@ -301,102 +303,148 @@ MainWindow::~MainWindow() = default;
 
 void MainWindow::applyAppStyle()
 {
+    // Принудительно светлая палитра: на macOS Dark Mode иначе текст
+    // остаётся светлым на белом фоне из stylesheet.
+    QPalette lightPalette = palette();
+    lightPalette.setColor(QPalette::Window, QColor("#eef2f6"));
+    lightPalette.setColor(QPalette::WindowText, QColor("#1f2933"));
+    lightPalette.setColor(QPalette::Base, QColor("#ffffff"));
+    lightPalette.setColor(QPalette::AlternateBase, QColor("#f7f9fc"));
+    lightPalette.setColor(QPalette::Text, QColor("#1f2933"));
+    lightPalette.setColor(QPalette::Button, QColor("#f4f7fb"));
+    lightPalette.setColor(QPalette::ButtonText, QColor("#1f2933"));
+    lightPalette.setColor(QPalette::PlaceholderText, QColor("#7a8794"));
+    lightPalette.setColor(QPalette::Highlight, QColor("#2f6fed"));
+    lightPalette.setColor(QPalette::HighlightedText, QColor("#ffffff"));
+    lightPalette.setColor(QPalette::ToolTipBase, QColor("#ffffff"));
+    lightPalette.setColor(QPalette::ToolTipText, QColor("#1f2933"));
+    setPalette(lightPalette);
+
     setStyleSheet(R"(
         QMainWindow, QWidget#centralRoot {
             background: #eef2f6;
             color: #1f2933;
             font-size: 13px;
         }
+        QLabel {
+            color: #1f2933;
+            background: transparent;
+        }
         QLabel#appTitle {
             font-size: 22px;
             font-weight: 700;
             color: #16324f;
-            letter-spacing: 0.2px;
         }
         QLabel#appSubtitle {
-            color: #607080;
+            color: #526273;
             margin-bottom: 4px;
         }
         QGroupBox#card {
             background: #ffffff;
-            border: 1px solid #d7dee7;
+            border: 1px solid #b8c4d2;
             border-radius: 10px;
             margin-top: 12px;
             font-weight: 600;
-            color: #243447;
+            color: #1f2933;
         }
         QGroupBox#card::title {
             subcontrol-origin: margin;
             left: 12px;
             padding: 0 6px;
+            color: #1f2933;
             background: #ffffff;
         }
         QLineEdit, QComboBox, QDateEdit, QSpinBox {
-            background: #f8fafc;
-            border: 1px solid #cfd8e3;
+            color: #1f2933;
+            background: #ffffff;
+            border: 1px solid #9aabbc;
             border-radius: 6px;
             padding: 6px 8px;
             min-height: 18px;
             selection-background-color: #2f6fed;
+            selection-color: #ffffff;
         }
         QLineEdit:focus, QComboBox:focus, QDateEdit:focus {
             border: 1px solid #2f6fed;
             background: #ffffff;
+            color: #1f2933;
+        }
+        QComboBox QAbstractItemView {
+            color: #1f2933;
+            background: #ffffff;
+            selection-background-color: #dce9ff;
+            selection-color: #1f2933;
         }
         QPushButton {
-            background: #f4f7fb;
-            border: 1px solid #c9d4e1;
+            color: #1f2933;
+            background: #e8eef6;
+            border: 1px solid #8fa0b3;
             border-radius: 7px;
             padding: 6px 12px;
             min-height: 24px;
         }
         QPushButton:hover {
-            background: #e8eef7;
-            border-color: #aebccc;
+            background: #d9e4f2;
+            border-color: #6f8399;
+            color: #1f2933;
         }
         QPushButton:pressed {
-            background: #dce6f2;
+            background: #c9d7e8;
+            color: #1f2933;
         }
         QPushButton#primaryButton {
             background: #2f6fed;
-            color: white;
+            color: #ffffff;
             border: 1px solid #255fd0;
             font-weight: 600;
         }
         QPushButton#primaryButton:hover {
             background: #2762d8;
+            color: #ffffff;
         }
         QPushButton#dangerButton {
-            background: #fff5f4;
+            background: #fff1ef;
             color: #a83228;
-            border: 1px solid #efc2bd;
+            border: 1px solid #d98c84;
+            font-weight: 600;
         }
         QPushButton#dangerButton:hover {
-            background: #ffe8e6;
+            background: #ffe3df;
+            color: #8f261e;
+        }
+        QCheckBox {
+            color: #1f2933;
+            spacing: 6px;
         }
         QTableWidget#taskTable {
+            color: #1f2933;
             background: #ffffff;
-            border: 1px solid #d7dee7;
+            border: 1px solid #b8c4d2;
             border-radius: 8px;
-            gridline-color: transparent;
+            gridline-color: #e3e9f0;
             selection-background-color: #dce9ff;
-            selection-color: #16324f;
-            alternate-background-color: #f7f9fc;
+            selection-color: #1f2933;
+            alternate-background-color: #f4f7fb;
+        }
+        QTableWidget#taskTable::item {
+            color: #1f2933;
+            padding: 4px;
+        }
+        QTableWidget#taskTable::item:selected {
+            color: #1f2933;
+            background: #dce9ff;
         }
         QHeaderView::section {
-            background: #f3f6fa;
-            color: #445566;
+            background: #e8eef6;
+            color: #1f2933;
             border: none;
-            border-bottom: 1px solid #d7dee7;
+            border-bottom: 1px solid #b8c4d2;
             padding: 8px 6px;
             font-weight: 600;
         }
         QLabel#footerStatus, QLabel#syncStatus {
-            color: #526273;
+            color: #334155;
             padding: 2px 2px;
-        }
-        QCheckBox {
-            spacing: 6px;
         }
         QScrollBar:vertical {
             background: transparent;
@@ -404,7 +452,7 @@ void MainWindow::applyAppStyle()
             margin: 2px;
         }
         QScrollBar::handle:vertical {
-            background: #c5d0dc;
+            background: #9aabbc;
             border-radius: 5px;
             min-height: 24px;
         }
@@ -1135,6 +1183,15 @@ void MainWindow::updateTaskList()
 
         statusItem->setData(Qt::UserRole, sourceIndex);
         titleItem->setToolTip(task.description());
+
+        const QColor defaultTextColor("#1f2933");
+        statusItem->setForeground(defaultTextColor);
+        titleItem->setForeground(defaultTextColor);
+        assigneeItem->setForeground(defaultTextColor);
+        priorityItem->setForeground(defaultTextColor);
+        dueDateItem->setForeground(defaultTextColor);
+        tagsItem->setForeground(defaultTextColor);
+        createdItem->setForeground(defaultTextColor);
 
         m_taskTable->setItem(row, 0, statusItem);
         m_taskTable->setItem(row, 1, titleItem);
