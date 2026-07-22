@@ -9,6 +9,7 @@
 #include <QLabel>
 #include <QCheckBox>
 #include <QDateEdit>
+#include <QAction>
 #include <QPair>
 #include <memory>
 #include "taskmanager.h"
@@ -54,33 +55,20 @@ private:
     std::unique_ptr<TaskManager> m_taskManager;
 
     QTableWidget* m_taskTable;
-    QLineEdit* m_titleInput;
-    QLineEdit* m_descriptionInput;
-    QComboBox* m_assigneeInput;
     QPushButton* m_manageMembersButton;
-    QLineEdit* m_tagsInput;
     QLineEdit* m_filterInput;
     QLineEdit* m_assigneeFilterInput;
     QLineEdit* m_searchInput;
-    QComboBox* m_priorityBox;
-    QComboBox* m_statusBox;
     QComboBox* m_statusFilterBox;
-    QDateEdit* m_dueDateInput;
-    QCheckBox* m_noDueDateBox;
     QComboBox* m_sortBox;
     QPushButton* m_addButton;
     QPushButton* m_editButton;
     QPushButton* m_duplicateButton;
     QPushButton* m_removeButton;
     QPushButton* m_toggleButton;
-    QPushButton* m_filterButton;
-    QPushButton* m_resetFilterButton;
-    QPushButton* m_clearCompletedButton;
-    QPushButton* m_saveButton;
-    QPushButton* m_loadButton;
     QLabel* m_statusLabel;
-    QCheckBox* m_hideCompletedBox;
-    QCheckBox* m_showOverdueOnlyBox;
+    QAction* m_hideCompletedAction;
+    QAction* m_showOverdueOnlyAction;
 
     QStringList m_teamMembers;
     QString m_activeFilter;

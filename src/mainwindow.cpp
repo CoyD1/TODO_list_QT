@@ -3,6 +3,7 @@
 #include <QWidget>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QGridLayout>
 #include <QLabel>
 #include <QListWidgetItem>
 #include <QFont>
@@ -20,6 +21,7 @@
 #include <QSettings>
 #include <QHeaderView>
 #include <QListWidget>
+#include <QMenu>
 #include <QPalette>
 #include <QColor>
 #include <QSizePolicy>
@@ -32,7 +34,8 @@ MainWindow::MainWindow(QWidget* parent)
     m_activeStatusFilter(-1)
 {
     setWindowTitle("Командный TODO-лист");
-    resize(1100, 820);
+    resize(1060, 760);
+    setMinimumSize(760, 600);
     applyAppStyle();
 
     QWidget* centralWidget = new QWidget(this);
@@ -46,123 +49,67 @@ MainWindow::MainWindow(QWidget* parent)
     QLabel* appSubtitle = new QLabel(
         "Задачи команды · фильтры · сохранение в файл", this);
     appSubtitle->setObjectName("appSubtitle");
-    mainLayout->addWidget(appTitle);
-    mainLayout->addWidget(appSubtitle);
-
-    // ── Новая задача ──
-    QGroupBox* inputGroup = new QGroupBox("Новая задача", this);
-    inputGroup->setObjectName("card");
-    inputGroup->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
-    inputGroup->setFlat(false);
-    inputGroup->setContentsMargins(0, 0, 0, 0);
-
-    QWidget* inputInner = new QWidget(inputGroup);
-    QVBoxLayout* inputOuterLayout = new QVBoxLayout(inputGroup);
-    inputOuterLayout->setContentsMargins(12, 22, 12, 12);
-    inputOuterLayout->setSpacing(0);
-    inputOuterLayout->addWidget(inputInner);
-
-    QFormLayout* inputLayout = new QFormLayout(inputInner);
-    inputLayout->setContentsMargins(2, 2, 2, 2);
-    inputLayout->setHorizontalSpacing(12);
-    inputLayout->setVerticalSpacing(8);
-    inputLayout->setFormAlignment(Qt::AlignLeft | Qt::AlignTop);
-    inputLayout->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    inputLayout->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
-    inputLayout->setRowWrapPolicy(QFormLayout::DontWrapRows);
-
-    m_titleInput = new QLineEdit(this);
-    m_titleInput->setPlaceholderText("Название задачи");
-    m_titleInput->setMinimumWidth(420);
-    inputLayout->addRow("Название:", m_titleInput);
-
-    m_descriptionInput = new QLineEdit(this);
-    m_descriptionInput->setPlaceholderText("Описание задачи");
-    inputLayout->addRow("Описание:", m_descriptionInput);
-
-    QHBoxLayout* assigneeLayout = new QHBoxLayout();
-    m_assigneeInput = new QComboBox(this);
-    m_assigneeInput->setEditable(true);
-    m_assigneeInput->setInsertPolicy(QComboBox::NoInsert);
-    m_assigneeInput->lineEdit()->setPlaceholderText("Выберите или введите имя");
-    assigneeLayout->addWidget(m_assigneeInput, 1);
-    m_manageMembersButton = new QPushButton("Участники", this);
-    assigneeLayout->addWidget(m_manageMembersButton);
-    inputLayout->addRow("Исполнитель:", assigneeLayout);
-
-    m_tagsInput = new QLineEdit(this);
-    m_tagsInput->setPlaceholderText("учеба, срочно, работа");
-    inputLayout->addRow("Теги:", m_tagsInput);
-
-    QHBoxLayout* rowLayout = new QHBoxLayout();
-    m_priorityBox = new QComboBox(this);
-    m_priorityBox->addItem("Низкий");
-    m_priorityBox->addItem("Средний");
-    m_priorityBox->addItem("Высокий");
-    rowLayout->addWidget(new QLabel("Приоритет:"));
-    rowLayout->addWidget(m_priorityBox);
-    rowLayout->addSpacing(16);
-    rowLayout->addWidget(new QLabel("Статус:"));
-    m_statusBox = new QComboBox(this);
-    m_statusBox->addItem("Запланирована");
-    m_statusBox->addItem("В работе");
-    m_statusBox->addItem("Выполнена");
-    rowLayout->addWidget(m_statusBox);
-    rowLayout->addSpacing(16);
-    rowLayout->addWidget(new QLabel("Срок:"));
-    m_dueDateInput = new QDateEdit(this);
-    m_dueDateInput->setCalendarPopup(true);
-    m_dueDateInput->setDate(QDate::currentDate());
-    m_dueDateInput->setEnabled(false);
-    rowLayout->addWidget(m_dueDateInput);
-    m_noDueDateBox = new QCheckBox("Без срока", this);
-    m_noDueDateBox->setChecked(true);
-    rowLayout->addWidget(m_noDueDateBox);
-    connect(m_noDueDateBox, &QCheckBox::toggled,
-            m_dueDateInput, &QWidget::setDisabled);
-    rowLayout->addStretch();
-    inputLayout->addRow("", rowLayout);
-
-    m_addButton = new QPushButton("Добавить задачу", this);
-    m_addButton->setObjectName("primaryButton");
-    m_addButton->setMinimumHeight(34);
-    m_addButton->setMaximumWidth(220);
-    inputLayout->addRow("", m_addButton);
-
-    mainLayout->addWidget(inputGroup);
+    QHBoxLayout* headerLayout = new QHBoxLayout();
+    headerLayout->addWidget(appTitle);
+    headerLayout->addSpacing(14);
+    headerLayout->addWidget(appSubtitle);
+    headerLayout->addStretch();
+    mainLayout->addLayout(headerLayout);
 
     // ── Поиск и фильтры ──
-    QGroupBox* filterGroup = new QGroupBox("Поиск и фильтры", this);
+    QGroupBox* filterGroup = new QGroupBox("Поиск и управление", this);
     filterGroup->setObjectName("card");
     filterGroup->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
-    QVBoxLayout* filterGroupLayout = new QVBoxLayout(filterGroup);
+    QGridLayout* filterGroupLayout = new QGridLayout(filterGroup);
     filterGroupLayout->setContentsMargins(12, 22, 12, 12);
     filterGroupLayout->setSpacing(8);
+    filterGroupLayout->setColumnStretch(0, 1);
+    filterGroupLayout->setColumnStretch(1, 1);
 
     m_searchInput = new QLineEdit(this);
     m_searchInput->setPlaceholderText("Поиск по названию или исполнителю...");
-    filterGroupLayout->addWidget(m_searchInput);
+    m_searchInput->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    m_addButton = new QPushButton("Новая задача", this);
+    m_addButton->setObjectName("primaryButton");
+    m_manageMembersButton = new QPushButton("Участники", this);
+    QPushButton* moreButton = new QPushButton("Ещё", this);
+    QMenu* moreMenu = new QMenu(moreButton);
+    QAction* saveAction = moreMenu->addAction("Сохранить в файл...");
+    QAction* loadAction = moreMenu->addAction("Загрузить из файла...");
+    moreMenu->addSeparator();
+    QAction* clearCompletedAction = moreMenu->addAction("Очистить выполненные");
+    moreMenu->addSeparator();
+    m_hideCompletedAction = moreMenu->addAction("Скрыть выполненные");
+    m_hideCompletedAction->setCheckable(true);
+    m_showOverdueOnlyAction = moreMenu->addAction("Только просроченные");
+    m_showOverdueOnlyAction->setCheckable(true);
+    QAction* resetFiltersAction = moreMenu->addAction("Сбросить фильтры");
+    moreButton->setMenu(moreMenu);
+    QHBoxLayout* searchLayout = new QHBoxLayout();
+    searchLayout->setContentsMargins(0, 0, 0, 0);
+    searchLayout->addWidget(m_searchInput, 1);
+    searchLayout->addWidget(m_addButton);
+    searchLayout->addWidget(m_manageMembersButton);
+    searchLayout->addWidget(moreButton);
+    filterGroupLayout->addLayout(searchLayout, 0, 0, 1, 2);
 
     QHBoxLayout* tagFilterLayout = new QHBoxLayout();
     m_filterInput = new QLineEdit(this);
     m_filterInput->setPlaceholderText("Фильтр по тегу");
+    m_filterInput->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     tagFilterLayout->addWidget(m_filterInput, 1);
     m_assigneeFilterInput = new QLineEdit(this);
     m_assigneeFilterInput->setPlaceholderText("Фильтр по исполнителю");
+    m_assigneeFilterInput->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     tagFilterLayout->addWidget(m_assigneeFilterInput, 1);
     m_statusFilterBox = new QComboBox(this);
     m_statusFilterBox->addItem("Все статусы");
     m_statusFilterBox->addItem("Запланированные");
     m_statusFilterBox->addItem("В работе");
     m_statusFilterBox->addItem("Выполненные");
-    tagFilterLayout->addWidget(m_statusFilterBox);
-    m_filterButton = new QPushButton("Применить", this);
-    tagFilterLayout->addWidget(m_filterButton);
-    m_resetFilterButton = new QPushButton("Сбросить", this);
-    tagFilterLayout->addWidget(m_resetFilterButton);
-    filterGroupLayout->addLayout(tagFilterLayout);
-
-    QHBoxLayout* controlsLayout = new QHBoxLayout();
+    m_statusFilterBox->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    m_statusFilterBox->setMinimumContentsLength(8);
+    m_statusFilterBox->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     m_sortBox = new QComboBox(this);
     m_sortBox->addItem("Порядок добавления");
     m_sortBox->addItem("Сначала важные");
@@ -170,35 +117,37 @@ MainWindow::MainWindow(QWidget* parent)
     m_sortBox->addItem("По сроку");
     m_sortBox->addItem("Сначала новые");
     m_sortBox->addItem("Сначала старые");
-    controlsLayout->addWidget(new QLabel("Сортировка:"));
-    controlsLayout->addWidget(m_sortBox);
-    controlsLayout->addSpacing(12);
-    m_hideCompletedBox = new QCheckBox("Скрыть выполненные", this);
-    m_showOverdueOnlyBox = new QCheckBox("Только просроченные", this);
-    controlsLayout->addWidget(m_hideCompletedBox);
-    controlsLayout->addWidget(m_showOverdueOnlyBox);
-    controlsLayout->addStretch();
-    m_saveButton = new QPushButton("Сохранить", this);
-    m_loadButton = new QPushButton("Загрузить", this);
-    controlsLayout->addWidget(m_saveButton);
-    controlsLayout->addWidget(m_loadButton);
-    filterGroupLayout->addLayout(controlsLayout);
+    m_sortBox->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    m_sortBox->setMinimumContentsLength(8);
+    m_sortBox->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    QGridLayout* selectorsLayout = new QGridLayout();
+    selectorsLayout->setContentsMargins(0, 0, 0, 0);
+    selectorsLayout->addWidget(new QLabel("Статус:", this), 0, 0);
+    selectorsLayout->addWidget(m_statusFilterBox, 0, 1);
+    selectorsLayout->addWidget(new QLabel("Сортировка:", this), 0, 2);
+    selectorsLayout->addWidget(m_sortBox, 0, 3);
+    selectorsLayout->setColumnStretch(1, 1);
+    selectorsLayout->setColumnStretch(3, 1);
+    filterGroupLayout->addLayout(selectorsLayout, 2, 0, 1, 2);
+    filterGroupLayout->addLayout(tagFilterLayout, 1, 0, 1, 2);
 
-    QHBoxLayout* actionRow = new QHBoxLayout();
+    QGridLayout* actionRow = new QGridLayout();
+    actionRow->setContentsMargins(0, 0, 0, 0);
+    actionRow->setHorizontalSpacing(8);
     m_toggleButton = new QPushButton("Отметить", this);
-    actionRow->addWidget(m_toggleButton);
+    actionRow->addWidget(m_toggleButton, 0, 0);
     m_editButton = new QPushButton("Редактировать", this);
-    actionRow->addWidget(m_editButton);
+    actionRow->addWidget(m_editButton, 0, 1);
     m_duplicateButton = new QPushButton("Дублировать", this);
-    actionRow->addWidget(m_duplicateButton);
+    actionRow->addWidget(m_duplicateButton, 0, 2);
     m_removeButton = new QPushButton("Удалить", this);
     m_removeButton->setObjectName("dangerButton");
-    actionRow->addWidget(m_removeButton);
-    actionRow->addSpacing(12);
-    m_clearCompletedButton = new QPushButton("Очистить выполненные", this);
-    actionRow->addWidget(m_clearCompletedButton);
-    actionRow->addStretch();
-    filterGroupLayout->addLayout(actionRow);
+    actionRow->addWidget(m_removeButton, 0, 3);
+    for (int column = 0; column < 4; ++column)
+    {
+        actionRow->setColumnStretch(column, 1);
+    }
+    filterGroupLayout->addLayout(actionRow, 3, 0, 1, 2);
 
     mainLayout->addWidget(filterGroup);
 
@@ -210,7 +159,6 @@ MainWindow::MainWindow(QWidget* parent)
     listLayout->setContentsMargins(10, 22, 10, 10);
     m_taskTable = new QTableWidget(this);
     m_taskTable->setObjectName("taskTable");
-    m_taskTable->setMinimumHeight(320);
     m_taskTable->setColumnCount(7);
     m_taskTable->setHorizontalHeaderLabels({
         "Статус", "Задача", "Исполнитель", "Приоритет",
@@ -225,16 +173,20 @@ MainWindow::MainWindow(QWidget* parent)
     m_taskTable->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     m_taskTable->verticalHeader()->setVisible(false);
     m_taskTable->verticalHeader()->setDefaultSectionSize(34);
+    const int fiveRowsHeight = m_taskTable->horizontalHeader()->sizeHint().height()
+                               + 5 * m_taskTable->verticalHeader()->defaultSectionSize()
+                               + 24;
+    m_taskTable->setMinimumHeight(fiveRowsHeight);
     m_taskTable->horizontalHeader()->setHighlightSections(false);
     m_taskTable->horizontalHeader()->setStretchLastSection(false);
     m_taskTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     m_taskTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     m_taskTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::Stretch);
-    m_taskTable->setColumnWidth(0, 110);
-    m_taskTable->setColumnWidth(2, 120);
-    m_taskTable->setColumnWidth(3, 100);
-    m_taskTable->setColumnWidth(4, 150);
-    m_taskTable->setColumnWidth(6, 140);
+    m_taskTable->setColumnWidth(0, 100);
+    m_taskTable->setColumnWidth(2, 105);
+    m_taskTable->setColumnWidth(3, 85);
+    m_taskTable->setColumnWidth(4, 135);
+    m_taskTable->setColumnWidth(6, 125);
     listLayout->addWidget(m_taskTable);
     mainLayout->addWidget(listGroup, 1);
 
@@ -257,25 +209,29 @@ MainWindow::MainWindow(QWidget* parent)
             this, &MainWindow::removeSelectedTask);
     connect(m_toggleButton, &QPushButton::clicked,
             this, &MainWindow::toggleSelectedTask);
-    connect(m_filterButton, &QPushButton::clicked,
-            this, &MainWindow::applyFilters);
-    connect(m_resetFilterButton, &QPushButton::clicked,
+    connect(resetFiltersAction, &QAction::triggered,
             this, &MainWindow::resetFilters);
-    connect(m_clearCompletedButton, &QPushButton::clicked,
-            this, &MainWindow::clearCompletedTasks);
-    connect(m_saveButton, &QPushButton::clicked,
+    connect(saveAction, &QAction::triggered,
             this, &MainWindow::saveTasksToFile);
-    connect(m_loadButton, &QPushButton::clicked,
+    connect(loadAction, &QAction::triggered,
             this, &MainWindow::loadTasksFromFile);
+    connect(clearCompletedAction, &QAction::triggered,
+            this, &MainWindow::clearCompletedTasks);
     connect(m_taskTable, &QTableWidget::cellDoubleClicked,
             this, &MainWindow::editSelectedTask);
     connect(m_searchInput, &QLineEdit::textChanged,
             this, &MainWindow::updateTaskList);
+    connect(m_filterInput, &QLineEdit::textChanged,
+            this, &MainWindow::applyFilters);
+    connect(m_assigneeFilterInput, &QLineEdit::textChanged,
+            this, &MainWindow::applyFilters);
+    connect(m_statusFilterBox, &QComboBox::currentIndexChanged,
+            this, &MainWindow::applyFilters);
     connect(m_sortBox, &QComboBox::currentIndexChanged,
             this, &MainWindow::updateTaskList);
-    connect(m_hideCompletedBox, &QCheckBox::toggled,
+    connect(m_hideCompletedAction, &QAction::toggled,
             this, &MainWindow::updateTaskList);
-    connect(m_showOverdueOnlyBox, &QCheckBox::toggled,
+    connect(m_showOverdueOnlyAction, &QAction::toggled,
             this, &MainWindow::updateTaskList);
     connect(m_taskManager.get(), &TaskManager::tasksChanged,
             this, &MainWindow::updateTaskList);
@@ -457,51 +413,92 @@ void MainWindow::applyAppStyle()
 
 void MainWindow::addTask()
 {
-    QString title = m_titleInput->text().trimmed();
-    QString description = m_descriptionInput->text().trimmed();
-    QString assignee = m_assigneeInput->currentText().trimmed();
-    QStringList tags = m_tagsInput->text().split(",", Qt::SkipEmptyParts);
+    QDialog dialog(this);
+    dialog.setWindowTitle("Новая задача");
+    dialog.resize(500, 380);
+
+    QFormLayout* form = new QFormLayout(&dialog);
+    form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+
+    QLineEdit* titleEdit = new QLineEdit(&dialog);
+    titleEdit->setPlaceholderText("Название задачи");
+    QLineEdit* descriptionEdit = new QLineEdit(&dialog);
+    descriptionEdit->setPlaceholderText("Описание задачи");
+    QComboBox* assigneeEdit = new QComboBox(&dialog);
+    assigneeEdit->setEditable(true);
+    assigneeEdit->setInsertPolicy(QComboBox::NoInsert);
+    assigneeEdit->addItems(m_teamMembers);
+    assigneeEdit->lineEdit()->setPlaceholderText("Выберите или введите имя");
+    QLineEdit* tagsEdit = new QLineEdit(&dialog);
+    tagsEdit->setPlaceholderText("учеба, срочно, работа");
+
+    QComboBox* priorityEdit = new QComboBox(&dialog);
+    priorityEdit->addItems({"Низкий", "Средний", "Высокий"});
+    priorityEdit->setCurrentIndex(1);
+    QComboBox* statusEdit = new QComboBox(&dialog);
+    statusEdit->addItems({"Запланирована", "В работе", "Выполнена"});
+
+    QDateEdit* dueDateEdit = new QDateEdit(QDate::currentDate(), &dialog);
+    dueDateEdit->setCalendarPopup(true);
+    dueDateEdit->setEnabled(false);
+    QCheckBox* noDueDateBox = new QCheckBox("Без срока", &dialog);
+    noDueDateBox->setChecked(true);
+    connect(noDueDateBox, &QCheckBox::toggled,
+            dueDateEdit, &QWidget::setDisabled);
+
+    QHBoxLayout* dueDateLayout = new QHBoxLayout();
+    dueDateLayout->addWidget(dueDateEdit);
+    dueDateLayout->addWidget(noDueDateBox);
+    dueDateLayout->addStretch();
+
+    form->addRow("Название:", titleEdit);
+    form->addRow("Описание:", descriptionEdit);
+    form->addRow("Исполнитель:", assigneeEdit);
+    form->addRow("Теги:", tagsEdit);
+    form->addRow("Приоритет:", priorityEdit);
+    form->addRow("Статус:", statusEdit);
+    form->addRow("Срок:", dueDateLayout);
+
+    QDialogButtonBox* buttons = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    form->addRow(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, [&]()
+    {
+        if (titleEdit->text().trimmed().isEmpty())
+        {
+            QMessageBox::warning(&dialog, "Новая задача", "Введите название задачи");
+            return;
+        }
+        dialog.accept();
+    });
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    if (dialog.exec() != QDialog::Accepted)
+    {
+        return;
+    }
+
+    const QString title = titleEdit->text().trimmed();
+    const QString description = descriptionEdit->text().trimmed();
+    const QString assignee = assigneeEdit->currentText().trimmed();
+    QStringList tags = tagsEdit->text().split(",", Qt::SkipEmptyParts);
 
     for (QString& tag : tags)
     {
         tag = tag.trimmed();
     }
 
-    if (title.isEmpty())
-    {
-        QMessageBox::warning(this, "Новая задача", "Введите название задачи");
-        return;
-    }
-
-    TaskPriority priority = TaskPriority::Medium;
-
-    if (m_priorityBox->currentIndex() == 0)
-    {
-        priority = TaskPriority::Low;
-    }
-    else if (m_priorityBox->currentIndex() == 2)
-    {
-        priority = TaskPriority::High;
-    }
-
-    TaskStatus status = static_cast<TaskStatus>(m_statusBox->currentIndex());
+    const TaskPriority priority = static_cast<TaskPriority>(priorityEdit->currentIndex());
+    const TaskStatus status = static_cast<TaskStatus>(statusEdit->currentIndex());
     Task task(title, description, tags, assignee, priority, status);
     addTeamMember(assignee);
 
-    if (!m_noDueDateBox->isChecked() && m_dueDateInput->date().isValid())
+    if (!noDueDateBox->isChecked() && dueDateEdit->date().isValid())
     {
-        task.setDueDate(m_dueDateInput->date());
+        task.setDueDate(dueDateEdit->date());
     }
 
     m_taskManager->addTask(task);
-
-    m_titleInput->clear();
-    m_descriptionInput->clear();
-    m_assigneeInput->setEditText("");
-    m_tagsInput->clear();
-    m_statusBox->setCurrentIndex(0);
-    m_dueDateInput->setDate(QDate::currentDate());
-    m_noDueDateBox->setChecked(true);
 }
 
 void MainWindow::editSelectedTask()
@@ -725,11 +722,6 @@ void MainWindow::manageTeamMembers()
 
     m_teamMembers.sort(Qt::CaseInsensitive);
     saveTeamMembers();
-
-    const QString currentText = m_assigneeInput->currentText();
-    m_assigneeInput->clear();
-    m_assigneeInput->addItems(m_teamMembers);
-    m_assigneeInput->setEditText(currentText);
 }
 
 void MainWindow::addTeamMember(const QString& name)
@@ -748,12 +740,8 @@ void MainWindow::addTeamMember(const QString& name)
         }
     }
 
-    const QString currentText = m_assigneeInput->currentText();
     m_teamMembers.append(trimmedName);
     m_teamMembers.sort(Qt::CaseInsensitive);
-    m_assigneeInput->clear();
-    m_assigneeInput->addItems(m_teamMembers);
-    m_assigneeInput->setEditText(currentText);
     saveTeamMembers();
 }
 
@@ -771,9 +759,6 @@ void MainWindow::loadTeamMembers()
     m_teamMembers = settings.value("team/members").toStringList();
     m_teamMembers.removeDuplicates();
     m_teamMembers.sort(Qt::CaseInsensitive);
-    m_assigneeInput->clear();
-    m_assigneeInput->addItems(m_teamMembers);
-    m_assigneeInput->setEditText("");
 }
 
 void MainWindow::saveTeamMembers() const
@@ -833,6 +818,8 @@ void MainWindow::resetFilters()
     m_filterInput->clear();
     m_assigneeFilterInput->clear();
     m_statusFilterBox->setCurrentIndex(0);
+    m_hideCompletedAction->setChecked(false);
+    m_showOverdueOnlyAction->setChecked(false);
     updateTaskList();
 }
 
@@ -1012,12 +999,12 @@ QVector<QPair<int, Task>> MainWindow::visibleTasks() const
             continue;
         }
 
-        if (m_hideCompletedBox->isChecked() && task.isCompleted())
+        if (m_hideCompletedAction->isChecked() && task.isCompleted())
         {
             continue;
         }
 
-        if (m_showOverdueOnlyBox->isChecked() && !task.isOverdue())
+        if (m_showOverdueOnlyAction->isChecked() && !task.isOverdue())
         {
             continue;
         }
