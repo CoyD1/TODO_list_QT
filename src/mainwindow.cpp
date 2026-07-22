@@ -17,48 +17,34 @@
 #include <QFile>
 #include <QDateEdit>
 #include <QDateTime>
-#include <QTimer>
 #include <QSettings>
 #include <QHeaderView>
 #include <QListWidget>
-#include <QHostAddress>
 #include <QPalette>
 #include <QColor>
+#include <QSizePolicy>
 #include <memory>
 #include <algorithm>
-
-namespace
-{
-constexpr quint16 DiscoveryPort = 45454;
-const QByteArray DiscoveryRequest = "TODO_LIST_DISCOVER_V1";
-const QByteArray DiscoveryResponse = "TODO_LIST_SERVER_V1:";
-}
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent),
     m_taskManager(std::make_unique<TaskManager>()),
-    m_client(std::make_unique<NetworkClient>()),
-    m_syncHost("127.0.0.1"),
-    m_syncPort(9999),
-    m_autoSyncInProgress(false),
-    m_activeStatusFilter(-1),
-    m_clientMode(false),
-    m_connectedClients(0)
+    m_activeStatusFilter(-1)
 {
     setWindowTitle("Командный TODO-лист");
-    resize(1040, 780);
+    resize(1100, 820);
     applyAppStyle();
 
     QWidget* centralWidget = new QWidget(this);
     centralWidget->setObjectName("centralRoot");
     QVBoxLayout* mainLayout = new QVBoxLayout(centralWidget);
-    mainLayout->setContentsMargins(18, 16, 18, 14);
-    mainLayout->setSpacing(12);
+    mainLayout->setContentsMargins(16, 12, 16, 12);
+    mainLayout->setSpacing(10);
 
     QLabel* appTitle = new QLabel("Командный TODO-лист", this);
     appTitle->setObjectName("appTitle");
     QLabel* appSubtitle = new QLabel(
-        "Задачи команды · фильтры · автосинхронизация в локальной сети", this);
+        "Задачи команды · фильтры · сохранение в файл", this);
     appSubtitle->setObjectName("appSubtitle");
     mainLayout->addWidget(appTitle);
     mainLayout->addWidget(appSubtitle);
@@ -66,13 +52,28 @@ MainWindow::MainWindow(QWidget* parent)
     // ── Новая задача ──
     QGroupBox* inputGroup = new QGroupBox("Новая задача", this);
     inputGroup->setObjectName("card");
-    QFormLayout* inputLayout = new QFormLayout(inputGroup);
-    inputLayout->setContentsMargins(14, 18, 14, 14);
+    inputGroup->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    inputGroup->setFlat(false);
+    inputGroup->setContentsMargins(0, 0, 0, 0);
+
+    QWidget* inputInner = new QWidget(inputGroup);
+    QVBoxLayout* inputOuterLayout = new QVBoxLayout(inputGroup);
+    inputOuterLayout->setContentsMargins(12, 22, 12, 12);
+    inputOuterLayout->setSpacing(0);
+    inputOuterLayout->addWidget(inputInner);
+
+    QFormLayout* inputLayout = new QFormLayout(inputInner);
+    inputLayout->setContentsMargins(2, 2, 2, 2);
     inputLayout->setHorizontalSpacing(12);
-    inputLayout->setVerticalSpacing(10);
+    inputLayout->setVerticalSpacing(8);
+    inputLayout->setFormAlignment(Qt::AlignLeft | Qt::AlignTop);
+    inputLayout->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    inputLayout->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+    inputLayout->setRowWrapPolicy(QFormLayout::DontWrapRows);
 
     m_titleInput = new QLineEdit(this);
     m_titleInput->setPlaceholderText("Название задачи");
+    m_titleInput->setMinimumWidth(420);
     inputLayout->addRow("Название:", m_titleInput);
 
     m_descriptionInput = new QLineEdit(this);
@@ -125,6 +126,7 @@ MainWindow::MainWindow(QWidget* parent)
     m_addButton = new QPushButton("Добавить задачу", this);
     m_addButton->setObjectName("primaryButton");
     m_addButton->setMinimumHeight(34);
+    m_addButton->setMaximumWidth(220);
     inputLayout->addRow("", m_addButton);
 
     mainLayout->addWidget(inputGroup);
@@ -132,9 +134,10 @@ MainWindow::MainWindow(QWidget* parent)
     // ── Поиск и фильтры ──
     QGroupBox* filterGroup = new QGroupBox("Поиск и фильтры", this);
     filterGroup->setObjectName("card");
+    filterGroup->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
     QVBoxLayout* filterGroupLayout = new QVBoxLayout(filterGroup);
-    filterGroupLayout->setContentsMargins(14, 18, 14, 14);
-    filterGroupLayout->setSpacing(10);
+    filterGroupLayout->setContentsMargins(12, 22, 12, 12);
+    filterGroupLayout->setSpacing(8);
 
     m_searchInput = new QLineEdit(this);
     m_searchInput->setPlaceholderText("Поиск по названию или исполнителю...");
@@ -199,24 +202,15 @@ MainWindow::MainWindow(QWidget* parent)
 
     mainLayout->addWidget(filterGroup);
 
-    // ── Совместная работа ──
-    QGroupBox* syncGroup = new QGroupBox("Совместная работа", this);
-    syncGroup->setObjectName("card");
-    QHBoxLayout* syncLayout = new QHBoxLayout(syncGroup);
-    syncLayout->setContentsMargins(14, 16, 14, 12);
-    m_syncStatusLabel = new QLabel("Настройка синхронизации...", this);
-    m_syncStatusLabel->setObjectName("syncStatus");
-    syncLayout->addWidget(m_syncStatusLabel);
-    syncLayout->addStretch();
-    mainLayout->addWidget(syncGroup);
-
     // ── Список задач ──
     QGroupBox* listGroup = new QGroupBox("Задачи", this);
     listGroup->setObjectName("card");
+    listGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     QVBoxLayout* listLayout = new QVBoxLayout(listGroup);
-    listLayout->setContentsMargins(10, 16, 10, 10);
+    listLayout->setContentsMargins(10, 22, 10, 10);
     m_taskTable = new QTableWidget(this);
     m_taskTable->setObjectName("taskTable");
+    m_taskTable->setMinimumHeight(320);
     m_taskTable->setColumnCount(7);
     m_taskTable->setHorizontalHeaderLabels({
         "Статус", "Задача", "Исполнитель", "Приоритет",
@@ -228,12 +222,19 @@ MainWindow::MainWindow(QWidget* parent)
     m_taskTable->setAlternatingRowColors(true);
     m_taskTable->setShowGrid(false);
     m_taskTable->setFocusPolicy(Qt::StrongFocus);
+    m_taskTable->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     m_taskTable->verticalHeader()->setVisible(false);
     m_taskTable->verticalHeader()->setDefaultSectionSize(34);
     m_taskTable->horizontalHeader()->setHighlightSections(false);
-    m_taskTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    m_taskTable->horizontalHeader()->setStretchLastSection(false);
+    m_taskTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     m_taskTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     m_taskTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::Stretch);
+    m_taskTable->setColumnWidth(0, 110);
+    m_taskTable->setColumnWidth(2, 120);
+    m_taskTable->setColumnWidth(3, 100);
+    m_taskTable->setColumnWidth(4, 150);
+    m_taskTable->setColumnWidth(6, 140);
     listLayout->addWidget(m_taskTable);
     mainLayout->addWidget(listGroup, 1);
 
@@ -286,17 +287,7 @@ MainWindow::MainWindow(QWidget* parent)
     loadTasksFromPath(m_tasksFilePath, false);
     refreshTeamMembersFromTasks();
 
-    connect(m_client.get(), &NetworkClient::connected,
-            this, &MainWindow::onConnected);
-    connect(m_client.get(), &NetworkClient::disconnected,
-            this, &MainWindow::onDisconnected);
-    connect(m_client.get(), &NetworkClient::connectionError,
-            this, &MainWindow::onConnectionError);
-    connect(m_client.get(), &NetworkClient::tasksReceived,
-            this, &MainWindow::onTasksReceived);
-
     updateTaskList();
-    QTimer::singleShot(0, this, &MainWindow::startAutomaticSync);
 }
 
 MainWindow::~MainWindow() = default;
@@ -343,12 +334,14 @@ void MainWindow::applyAppStyle()
             background: #ffffff;
             border: 1px solid #b8c4d2;
             border-radius: 10px;
-            margin-top: 12px;
+            margin-top: 14px;
+            padding-top: 8px;
             font-weight: 600;
             color: #1f2933;
         }
         QGroupBox#card::title {
             subcontrol-origin: margin;
+            subcontrol-position: top left;
             left: 12px;
             padding: 0 6px;
             color: #1f2933;
@@ -442,7 +435,7 @@ void MainWindow::applyAppStyle()
             padding: 8px 6px;
             font-weight: 600;
         }
-        QLabel#footerStatus, QLabel#syncStatus {
+        QLabel#footerStatus {
             color: #334155;
             padding: 2px 2px;
         }
@@ -500,14 +493,7 @@ void MainWindow::addTask()
         task.setDueDate(m_dueDateInput->date());
     }
 
-    if (m_clientMode)
-    {
-        m_client->sendAddTask(task);
-    }
-    else
-    {
-        m_taskManager->addTask(task);
-    }
+    m_taskManager->addTask(task);
 
     m_titleInput->clear();
     m_descriptionInput->clear();
@@ -538,6 +524,9 @@ void MainWindow::editSelectedTask()
     dialog.setWindowTitle("Редактирование задачи");
 
     QFormLayout* form = new QFormLayout(&dialog);
+    form->setFormAlignment(Qt::AlignLeft | Qt::AlignTop);
+    form->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
 
     QLineEdit* titleEdit = new QLineEdit(task.title(), &dialog);
     QLineEdit* descEdit = new QLineEdit(task.description(), &dialog);
@@ -628,15 +617,7 @@ void MainWindow::editSelectedTask()
         updatedTask.setDueDate(dueDateEdit->date());
     }
 
-    if (m_clientMode)
-    {
-        updatedTask.setId(task.id());
-        m_client->sendEditTask(updatedTask);
-    }
-    else
-    {
-        m_taskManager->updateTask(index, updatedTask);
-    }
+    m_taskManager->updateTask(index, updatedTask);
 }
 
 void MainWindow::duplicateSelectedTask()
@@ -656,18 +637,7 @@ void MainWindow::duplicateSelectedTask()
         return;
     }
 
-    if (m_clientMode)
-    {
-        Task copy = allTasks[index];
-        copy.setTitle(copy.title() + " (копия)");
-        copy.setStatus(TaskStatus::Planned);
-        copy.setCreatedAt(QDateTime::currentDateTime());
-        m_client->sendAddTask(copy);
-    }
-    else
-    {
-        m_taskManager->duplicateTask(index);
-    }
+    m_taskManager->duplicateTask(index);
 }
 
 void MainWindow::manageTeamMembers()
@@ -832,15 +802,7 @@ void MainWindow::removeSelectedTask()
         return;
     }
 
-    if (m_clientMode)
-    {
-        int taskId = m_taskManager->tasks()[index].id();
-        m_client->sendRemoveTask(taskId);
-    }
-    else
-    {
-        m_taskManager->removeTask(index);
-    }
+    m_taskManager->removeTask(index);
 }
 
 void MainWindow::toggleSelectedTask()
@@ -852,15 +814,7 @@ void MainWindow::toggleSelectedTask()
         return;
     }
 
-    if (m_clientMode)
-    {
-        int taskId = m_taskManager->tasks()[index].id();
-        m_client->sendToggleTask(taskId);
-    }
-    else
-    {
-        m_taskManager->toggleCompleted(index);
-    }
+    m_taskManager->toggleCompleted(index);
 }
 
 void MainWindow::applyFilters()
@@ -884,21 +838,7 @@ void MainWindow::resetFilters()
 
 void MainWindow::clearCompletedTasks()
 {
-    if (m_clientMode)
-    {
-        const QVector<Task> tasks = m_taskManager->tasks();
-        for (const Task& task : tasks)
-        {
-            if (task.isCompleted())
-            {
-                m_client->sendRemoveTask(task.id());
-            }
-        }
-    }
-    else
-    {
-        m_taskManager->clearCompleted();
-    }
+    m_taskManager->clearCompleted();
 }
 
 QString MainWindow::defaultTasksFilePath() const
@@ -975,11 +915,6 @@ void MainWindow::loadTasksFromFile()
 
 void MainWindow::autoSaveTasks()
 {
-    if (m_clientMode)
-    {
-        return;
-    }
-
     JsonSerializer serializer;
     serializer.save(m_taskManager->tasks(), m_tasksFilePath);
 }
@@ -1275,270 +1210,4 @@ void MainWindow::updateTaskList()
     }
 
     m_statusLabel->setText(statusText);
-}
-
-void MainWindow::startAutomaticSync()
-{
-    if (m_autoSyncInProgress)
-    {
-        return;
-    }
-
-    if (m_client->isConnected() || m_server)
-    {
-        updateSyncStatus();
-        return;
-    }
-
-    m_autoSyncInProgress = true;
-    m_syncStatusLabel->setStyleSheet("color: #666666;");
-    m_syncStatusLabel->setText("Поиск общего списка в локальной сети...");
-
-    stopDiscoverySearch();
-    m_discoveryClient = std::make_unique<QUdpSocket>();
-    connect(m_discoveryClient.get(), &QUdpSocket::readyRead,
-            this, &MainWindow::onDiscoveryResponse);
-
-    m_discoveryClient->writeDatagram(
-        DiscoveryRequest, QHostAddress::LocalHost, DiscoveryPort);
-    m_discoveryClient->writeDatagram(
-        DiscoveryRequest, QHostAddress::Broadcast, DiscoveryPort);
-
-    QTimer::singleShot(900, this, &MainWindow::finishAutomaticSyncSearch);
-}
-
-void MainWindow::finishAutomaticSyncSearch()
-{
-    if (!m_autoSyncInProgress || m_client->isConnected())
-    {
-        return;
-    }
-
-    stopDiscoverySearch();
-
-    if (startLocalServer(m_syncPort))
-    {
-        m_autoSyncInProgress = false;
-        updateSyncStatus();
-        return;
-    }
-
-    m_autoSyncInProgress = false;
-    m_syncStatusLabel->setStyleSheet("color: #B9770E;");
-    m_syncStatusLabel->setText("Общий список найден · подключение...");
-    QTimer::singleShot(350, this, &MainWindow::startAutomaticSync);
-}
-
-void MainWindow::onDiscoveryResponse()
-{
-    while (m_discoveryClient && m_discoveryClient->hasPendingDatagrams())
-    {
-        QHostAddress senderAddress;
-        quint16 senderPort = 0;
-        QByteArray data;
-        data.resize(static_cast<int>(m_discoveryClient->pendingDatagramSize()));
-        m_discoveryClient->readDatagram(
-            data.data(), data.size(), &senderAddress, &senderPort);
-
-        if (!data.startsWith(DiscoveryResponse))
-        {
-            continue;
-        }
-
-        bool portOk = false;
-        const quint16 port = data.mid(DiscoveryResponse.size()).toUShort(&portOk);
-        if (!portOk)
-        {
-            continue;
-        }
-
-        m_syncHost = senderAddress.isLoopback()
-                         ? QString("127.0.0.1")
-                         : senderAddress.toString();
-        m_syncPort = port;
-        stopDiscoverySearch();
-
-        if (m_client->connectToServer(m_syncHost, m_syncPort, 1500))
-        {
-            m_autoSyncInProgress = false;
-            updateSyncStatus();
-            return;
-        }
-
-        m_autoSyncInProgress = false;
-        QTimer::singleShot(350, this, &MainWindow::startAutomaticSync);
-        return;
-    }
-}
-
-bool MainWindow::startLocalServer(quint16 port)
-{
-    if (m_server)
-    {
-        return true;
-    }
-
-    m_server = std::make_unique<TaskServer>(m_taskManager.get());
-    connect(m_server.get(), &TaskServer::clientConnected,
-            this, &MainWindow::onServerClientConnected);
-    connect(m_server.get(), &TaskServer::clientDisconnected,
-            this, &MainWindow::onServerClientDisconnected);
-
-    if (!m_server->start(port))
-    {
-        m_server.reset();
-        return false;
-    }
-
-    m_connectedClients = 0;
-    setClientModeEnabled(false);
-    startDiscoveryResponder();
-    updateSyncStatus();
-    return true;
-}
-
-void MainWindow::stopLocalServer()
-{
-    if (!m_server)
-    {
-        return;
-    }
-
-    m_server->stop();
-    m_server.reset();
-    m_connectedClients = 0;
-
-    if (m_discoveryServer)
-    {
-        m_discoveryServer->close();
-        m_discoveryServer.reset();
-    }
-}
-
-void MainWindow::startDiscoveryResponder()
-{
-    if (m_discoveryServer)
-    {
-        return;
-    }
-
-    m_discoveryServer = std::make_unique<QUdpSocket>();
-    const bool bound = m_discoveryServer->bind(
-        QHostAddress::AnyIPv4,
-        DiscoveryPort,
-        QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint);
-
-    if (!bound)
-    {
-        m_discoveryServer.reset();
-        return;
-    }
-
-    connect(m_discoveryServer.get(), &QUdpSocket::readyRead,
-            this, &MainWindow::onDiscoveryRequest);
-}
-
-void MainWindow::onDiscoveryRequest()
-{
-    while (m_discoveryServer && m_discoveryServer->hasPendingDatagrams())
-    {
-        QHostAddress senderAddress;
-        quint16 senderPort = 0;
-        QByteArray data;
-        data.resize(static_cast<int>(m_discoveryServer->pendingDatagramSize()));
-        m_discoveryServer->readDatagram(
-            data.data(), data.size(), &senderAddress, &senderPort);
-
-        if (data == DiscoveryRequest && m_server)
-        {
-            const QByteArray response = DiscoveryResponse
-                                        + QByteArray::number(m_syncPort);
-            m_discoveryServer->writeDatagram(
-                response, senderAddress, senderPort);
-        }
-    }
-}
-
-void MainWindow::stopDiscoverySearch()
-{
-    if (!m_discoveryClient)
-    {
-        return;
-    }
-
-    m_discoveryClient->close();
-    m_discoveryClient.reset();
-}
-
-void MainWindow::onConnected()
-{
-    setClientModeEnabled(true);
-    updateSyncStatus();
-}
-
-void MainWindow::onDisconnected()
-{
-    setClientModeEnabled(false);
-
-    if (!m_autoSyncInProgress && !m_server)
-    {
-        m_syncStatusLabel->setStyleSheet("color: #B9770E;");
-        m_syncStatusLabel->setText("Соединение потеряно · переподключение...");
-        QTimer::singleShot(1200, this, &MainWindow::startAutomaticSync);
-    }
-}
-
-void MainWindow::onConnectionError(const QString& error)
-{
-    if (!m_autoSyncInProgress)
-    {
-        m_syncStatusLabel->setStyleSheet("color: #B03A2E;");
-        m_syncStatusLabel->setText("Ошибка синхронизации: " + error);
-    }
-}
-
-void MainWindow::onTasksReceived(const QVector<Task>& tasks)
-{
-    m_taskManager->setTasks(tasks);
-    refreshTeamMembersFromTasks();
-}
-
-void MainWindow::setClientModeEnabled(bool enabled)
-{
-    m_clientMode = enabled;
-    m_loadButton->setEnabled(!enabled);
-}
-
-void MainWindow::onServerClientConnected()
-{
-    ++m_connectedClients;
-    updateSyncStatus();
-}
-
-void MainWindow::onServerClientDisconnected()
-{
-    if (m_connectedClients > 0)
-    {
-        --m_connectedClients;
-    }
-
-    updateSyncStatus();
-}
-
-void MainWindow::updateSyncStatus()
-{
-    if (m_client->isConnected())
-    {
-        m_syncStatusLabel->setStyleSheet("color: #1E8449;");
-        m_syncStatusLabel->setText("● Общий список подключён автоматически");
-        return;
-    }
-
-    if (m_server)
-    {
-        m_syncStatusLabel->setStyleSheet("color: #2874A6;");
-        m_syncStatusLabel->setText(
-            QString("● Общий список создан · участников: %1")
-                .arg(m_connectedClients + 1));
-    }
 }

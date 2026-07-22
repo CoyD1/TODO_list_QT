@@ -10,12 +10,9 @@
 #include <QCheckBox>
 #include <QDateEdit>
 #include <QPair>
-#include <QUdpSocket>
 #include <memory>
 #include "taskmanager.h"
 #include "serializer.h"
-#include "taskserver.h"
-#include "networkclient.h"
 
 class MainWindow : public QMainWindow
 {
@@ -40,17 +37,6 @@ private slots:
     void autoSaveTasks();
     void updateTaskList();
 
-    void startAutomaticSync();
-    void finishAutomaticSyncSearch();
-    void onDiscoveryResponse();
-    void onDiscoveryRequest();
-    void onConnected();
-    void onDisconnected();
-    void onConnectionError(const QString& error);
-    void onTasksReceived(const QVector<Task>& tasks);
-    void onServerClientConnected();
-    void onServerClientDisconnected();
-
 private:
     void applyAppStyle();
     int selectedTaskIndex() const;
@@ -58,24 +44,14 @@ private:
     static QString priorityText(TaskPriority priority);
     static QString taskStatusText(TaskStatus status);
     static int priorityWeight(TaskPriority priority);
-    bool startLocalServer(quint16 port);
-    void stopLocalServer();
-    void startDiscoveryResponder();
-    void stopDiscoverySearch();
-    void updateSyncStatus();
     void addTeamMember(const QString& name);
     void refreshTeamMembersFromTasks();
     void loadTeamMembers();
     void saveTeamMembers() const;
-    void setClientModeEnabled(bool enabled);
     QString defaultTasksFilePath() const;
     bool loadTasksFromPath(const QString& filePath, bool showMessage);
 
     std::unique_ptr<TaskManager> m_taskManager;
-    std::unique_ptr<TaskServer> m_server;
-    std::unique_ptr<NetworkClient> m_client;
-    std::unique_ptr<QUdpSocket> m_discoveryClient;
-    std::unique_ptr<QUdpSocket> m_discoveryServer;
 
     QTableWidget* m_taskTable;
     QLineEdit* m_titleInput;
@@ -106,18 +82,11 @@ private:
     QCheckBox* m_hideCompletedBox;
     QCheckBox* m_showOverdueOnlyBox;
 
-    QLabel* m_syncStatusLabel;
-
-    QString m_syncHost;
-    quint16 m_syncPort;
-    bool m_autoSyncInProgress;
     QStringList m_teamMembers;
     QString m_activeFilter;
     QString m_activeAssigneeFilter;
     int m_activeStatusFilter;
     QString m_tasksFilePath;
-    bool m_clientMode;
-    int m_connectedClients;
 };
 
 #endif
