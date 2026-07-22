@@ -4,13 +4,14 @@
 #include <QJsonDocument>
 #include <QDataStream>
 #include <QIODevice>
+#include <memory>
 
 TaskServer::TaskServer(TaskManager* taskManager, QObject* parent)
     : QObject(parent),
-    m_server(new QTcpServer(this)),
+    m_server(std::make_unique<QTcpServer>()),
     m_taskManager(taskManager)
 {
-    connect(m_server, &QTcpServer::newConnection,
+    connect(m_server.get(), &QTcpServer::newConnection,
             this, &TaskServer::onNewConnection);
     connect(m_taskManager, &TaskManager::tasksChanged,
             this, &TaskServer::broadcastTasks);
@@ -148,7 +149,7 @@ void TaskServer::processMessage(const QByteArray& data)
         return;
     }
 
-    Message* msg = Message::fromJson(doc.object());
+    std::unique_ptr<Message> msg = Message::fromJson(doc.object());
 
     if (!msg)
     {
@@ -159,13 +160,13 @@ void TaskServer::processMessage(const QByteArray& data)
     {
     case MessageType::AddTask:
     {
-        AddTaskMessage* addMsg = static_cast<AddTaskMessage*>(msg);
+        auto* addMsg = static_cast<AddTaskMessage*>(msg.get());
         m_taskManager->addTask(addMsg->task());
         break;
     }
     case MessageType::RemoveTask:
     {
-        RemoveTaskMessage* rmMsg = static_cast<RemoveTaskMessage*>(msg);
+        auto* rmMsg = static_cast<RemoveTaskMessage*>(msg.get());
         int idx = m_taskManager->taskIndexById(rmMsg->taskId());
 
         if (idx >= 0)
@@ -177,7 +178,7 @@ void TaskServer::processMessage(const QByteArray& data)
     }
     case MessageType::ToggleTask:
     {
-        ToggleTaskMessage* togMsg = static_cast<ToggleTaskMessage*>(msg);
+        auto* togMsg = static_cast<ToggleTaskMessage*>(msg.get());
         int idx = m_taskManager->taskIndexById(togMsg->taskId());
 
         if (idx >= 0)
@@ -189,7 +190,7 @@ void TaskServer::processMessage(const QByteArray& data)
     }
     case MessageType::EditTask:
     {
-        EditTaskMessage* editMsg = static_cast<EditTaskMessage*>(msg);
+        auto* editMsg = static_cast<EditTaskMessage*>(msg.get());
         int idx = m_taskManager->taskIndexById(editMsg->task().id());
 
         if (idx >= 0)
@@ -202,6 +203,4 @@ void TaskServer::processMessage(const QByteArray& data)
     case MessageType::Sync:
         break;
     }
-
-    delete msg;
 }

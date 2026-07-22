@@ -21,6 +21,8 @@
 #include <QSettings>
 #include <QHeaderView>
 #include <QListWidget>
+#include <QHostAddress>
+#include <memory>
 #include <algorithm>
 
 namespace
@@ -32,11 +34,8 @@ const QByteArray DiscoveryResponse = "TODO_LIST_SERVER_V1:";
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent),
-    m_taskManager(new TaskManager(this)),
-    m_server(nullptr),
-    m_client(new NetworkClient(this)),
-    m_discoveryClient(nullptr),
-    m_discoveryServer(nullptr),
+    m_taskManager(std::make_unique<TaskManager>()),
+    m_client(std::make_unique<NetworkClient>()),
     m_syncHost("127.0.0.1"),
     m_syncPort(9999),
     m_autoSyncInProgress(false),
@@ -45,15 +44,30 @@ MainWindow::MainWindow(QWidget* parent)
     m_connectedClients(0)
 {
     setWindowTitle("Командный TODO-лист");
-    resize(960, 760);
+    resize(1040, 780);
+    applyAppStyle();
 
     QWidget* centralWidget = new QWidget(this);
+    centralWidget->setObjectName("centralRoot");
     QVBoxLayout* mainLayout = new QVBoxLayout(centralWidget);
-    mainLayout->setSpacing(8);
+    mainLayout->setContentsMargins(18, 16, 18, 14);
+    mainLayout->setSpacing(12);
+
+    QLabel* appTitle = new QLabel("Командный TODO-лист", this);
+    appTitle->setObjectName("appTitle");
+    QLabel* appSubtitle = new QLabel(
+        "Задачи команды · фильтры · автосинхронизация в локальной сети", this);
+    appSubtitle->setObjectName("appSubtitle");
+    mainLayout->addWidget(appTitle);
+    mainLayout->addWidget(appSubtitle);
 
     // ── Новая задача ──
     QGroupBox* inputGroup = new QGroupBox("Новая задача", this);
+    inputGroup->setObjectName("card");
     QFormLayout* inputLayout = new QFormLayout(inputGroup);
+    inputLayout->setContentsMargins(14, 18, 14, 14);
+    inputLayout->setHorizontalSpacing(12);
+    inputLayout->setVerticalSpacing(10);
 
     m_titleInput = new QLineEdit(this);
     m_titleInput->setPlaceholderText("Название задачи");
@@ -107,13 +121,18 @@ MainWindow::MainWindow(QWidget* parent)
     inputLayout->addRow("", rowLayout);
 
     m_addButton = new QPushButton("Добавить задачу", this);
+    m_addButton->setObjectName("primaryButton");
+    m_addButton->setMinimumHeight(34);
     inputLayout->addRow("", m_addButton);
 
     mainLayout->addWidget(inputGroup);
 
     // ── Поиск и фильтры ──
     QGroupBox* filterGroup = new QGroupBox("Поиск и фильтры", this);
+    filterGroup->setObjectName("card");
     QVBoxLayout* filterGroupLayout = new QVBoxLayout(filterGroup);
+    filterGroupLayout->setContentsMargins(14, 18, 14, 14);
+    filterGroupLayout->setSpacing(10);
 
     m_searchInput = new QLineEdit(this);
     m_searchInput->setPlaceholderText("Поиск по названию или исполнителю...");
@@ -154,8 +173,10 @@ MainWindow::MainWindow(QWidget* parent)
     controlsLayout->addWidget(m_hideCompletedBox);
     controlsLayout->addWidget(m_showOverdueOnlyBox);
     controlsLayout->addStretch();
-    controlsLayout->addWidget(m_saveButton = new QPushButton("Сохранить", this));
-    controlsLayout->addWidget(m_loadButton = new QPushButton("Загрузить", this));
+    m_saveButton = new QPushButton("Сохранить", this);
+    m_loadButton = new QPushButton("Загрузить", this);
+    controlsLayout->addWidget(m_saveButton);
+    controlsLayout->addWidget(m_loadButton);
     filterGroupLayout->addLayout(controlsLayout);
 
     QHBoxLayout* actionRow = new QHBoxLayout();
@@ -166,6 +187,7 @@ MainWindow::MainWindow(QWidget* parent)
     m_duplicateButton = new QPushButton("Дублировать", this);
     actionRow->addWidget(m_duplicateButton);
     m_removeButton = new QPushButton("Удалить", this);
+    m_removeButton->setObjectName("dangerButton");
     actionRow->addWidget(m_removeButton);
     actionRow->addSpacing(12);
     m_clearCompletedButton = new QPushButton("Очистить выполненные", this);
@@ -177,16 +199,22 @@ MainWindow::MainWindow(QWidget* parent)
 
     // ── Совместная работа ──
     QGroupBox* syncGroup = new QGroupBox("Совместная работа", this);
+    syncGroup->setObjectName("card");
     QHBoxLayout* syncLayout = new QHBoxLayout(syncGroup);
+    syncLayout->setContentsMargins(14, 16, 14, 12);
     m_syncStatusLabel = new QLabel("Настройка синхронизации...", this);
+    m_syncStatusLabel->setObjectName("syncStatus");
     syncLayout->addWidget(m_syncStatusLabel);
     syncLayout->addStretch();
     mainLayout->addWidget(syncGroup);
 
     // ── Список задач ──
     QGroupBox* listGroup = new QGroupBox("Задачи", this);
+    listGroup->setObjectName("card");
     QVBoxLayout* listLayout = new QVBoxLayout(listGroup);
+    listLayout->setContentsMargins(10, 16, 10, 10);
     m_taskTable = new QTableWidget(this);
+    m_taskTable->setObjectName("taskTable");
     m_taskTable->setColumnCount(7);
     m_taskTable->setHorizontalHeaderLabels({
         "Статус", "Задача", "Исполнитель", "Приоритет",
@@ -196,7 +224,11 @@ MainWindow::MainWindow(QWidget* parent)
     m_taskTable->setSelectionMode(QAbstractItemView::SingleSelection);
     m_taskTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_taskTable->setAlternatingRowColors(true);
+    m_taskTable->setShowGrid(false);
+    m_taskTable->setFocusPolicy(Qt::StrongFocus);
     m_taskTable->verticalHeader()->setVisible(false);
+    m_taskTable->verticalHeader()->setDefaultSectionSize(34);
+    m_taskTable->horizontalHeader()->setHighlightSections(false);
     m_taskTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
     m_taskTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     m_taskTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::Stretch);
@@ -205,6 +237,7 @@ MainWindow::MainWindow(QWidget* parent)
 
     // ── Статус строка ──
     m_statusLabel = new QLabel(this);
+    m_statusLabel->setObjectName("footerStatus");
     mainLayout->addWidget(m_statusLabel);
 
     setCentralWidget(centralWidget);
@@ -241,9 +274,9 @@ MainWindow::MainWindow(QWidget* parent)
             this, &MainWindow::updateTaskList);
     connect(m_showOverdueOnlyBox, &QCheckBox::toggled,
             this, &MainWindow::updateTaskList);
-    connect(m_taskManager, &TaskManager::tasksChanged,
+    connect(m_taskManager.get(), &TaskManager::tasksChanged,
             this, &MainWindow::updateTaskList);
-    connect(m_taskManager, &TaskManager::tasksChanged,
+    connect(m_taskManager.get(), &TaskManager::tasksChanged,
             this, &MainWindow::autoSaveTasks);
 
     loadTeamMembers();
@@ -251,21 +284,134 @@ MainWindow::MainWindow(QWidget* parent)
     loadTasksFromPath(m_tasksFilePath, false);
     refreshTeamMembersFromTasks();
 
-    connect(m_client, &NetworkClient::connected,
+    connect(m_client.get(), &NetworkClient::connected,
             this, &MainWindow::onConnected);
-    connect(m_client, &NetworkClient::disconnected,
+    connect(m_client.get(), &NetworkClient::disconnected,
             this, &MainWindow::onDisconnected);
-    connect(m_client, &NetworkClient::connectionError,
+    connect(m_client.get(), &NetworkClient::connectionError,
             this, &MainWindow::onConnectionError);
-    connect(m_client, &NetworkClient::tasksReceived,
+    connect(m_client.get(), &NetworkClient::tasksReceived,
             this, &MainWindow::onTasksReceived);
 
     updateTaskList();
     QTimer::singleShot(0, this, &MainWindow::startAutomaticSync);
 }
 
-MainWindow::~MainWindow()
+MainWindow::~MainWindow() = default;
+
+void MainWindow::applyAppStyle()
 {
+    setStyleSheet(R"(
+        QMainWindow, QWidget#centralRoot {
+            background: #eef2f6;
+            color: #1f2933;
+            font-size: 13px;
+        }
+        QLabel#appTitle {
+            font-size: 22px;
+            font-weight: 700;
+            color: #16324f;
+            letter-spacing: 0.2px;
+        }
+        QLabel#appSubtitle {
+            color: #607080;
+            margin-bottom: 4px;
+        }
+        QGroupBox#card {
+            background: #ffffff;
+            border: 1px solid #d7dee7;
+            border-radius: 10px;
+            margin-top: 12px;
+            font-weight: 600;
+            color: #243447;
+        }
+        QGroupBox#card::title {
+            subcontrol-origin: margin;
+            left: 12px;
+            padding: 0 6px;
+            background: #ffffff;
+        }
+        QLineEdit, QComboBox, QDateEdit, QSpinBox {
+            background: #f8fafc;
+            border: 1px solid #cfd8e3;
+            border-radius: 6px;
+            padding: 6px 8px;
+            min-height: 18px;
+            selection-background-color: #2f6fed;
+        }
+        QLineEdit:focus, QComboBox:focus, QDateEdit:focus {
+            border: 1px solid #2f6fed;
+            background: #ffffff;
+        }
+        QPushButton {
+            background: #f4f7fb;
+            border: 1px solid #c9d4e1;
+            border-radius: 7px;
+            padding: 6px 12px;
+            min-height: 24px;
+        }
+        QPushButton:hover {
+            background: #e8eef7;
+            border-color: #aebccc;
+        }
+        QPushButton:pressed {
+            background: #dce6f2;
+        }
+        QPushButton#primaryButton {
+            background: #2f6fed;
+            color: white;
+            border: 1px solid #255fd0;
+            font-weight: 600;
+        }
+        QPushButton#primaryButton:hover {
+            background: #2762d8;
+        }
+        QPushButton#dangerButton {
+            background: #fff5f4;
+            color: #a83228;
+            border: 1px solid #efc2bd;
+        }
+        QPushButton#dangerButton:hover {
+            background: #ffe8e6;
+        }
+        QTableWidget#taskTable {
+            background: #ffffff;
+            border: 1px solid #d7dee7;
+            border-radius: 8px;
+            gridline-color: transparent;
+            selection-background-color: #dce9ff;
+            selection-color: #16324f;
+            alternate-background-color: #f7f9fc;
+        }
+        QHeaderView::section {
+            background: #f3f6fa;
+            color: #445566;
+            border: none;
+            border-bottom: 1px solid #d7dee7;
+            padding: 8px 6px;
+            font-weight: 600;
+        }
+        QLabel#footerStatus, QLabel#syncStatus {
+            color: #526273;
+            padding: 2px 2px;
+        }
+        QCheckBox {
+            spacing: 6px;
+        }
+        QScrollBar:vertical {
+            background: transparent;
+            width: 10px;
+            margin: 2px;
+        }
+        QScrollBar::handle:vertical {
+            background: #c5d0dc;
+            border-radius: 5px;
+            min-height: 24px;
+        }
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+            height: 0;
+        }
+    )");
 }
 
 void MainWindow::addTask()
@@ -455,14 +601,19 @@ void MainWindow::duplicateSelectedTask()
         return;
     }
 
-    const Task& sourceTask = m_taskManager->tasks()[index];
-    Task copy = sourceTask;
-    copy.setTitle(sourceTask.title() + " (копия)");
-    copy.setStatus(TaskStatus::Planned);
-    copy.setCreatedAt(QDateTime::currentDateTime());
+    const QVector<Task> allTasks = m_taskManager->tasks();
+    if (index >= allTasks.size())
+    {
+        QMessageBox::warning(this, "Дублирование", "Не удалось получить выбранную задачу");
+        return;
+    }
 
     if (m_clientMode)
     {
+        Task copy = allTasks[index];
+        copy.setTitle(copy.title() + " (копия)");
+        copy.setStatus(TaskStatus::Planned);
+        copy.setCreatedAt(QDateTime::currentDateTime());
         m_client->sendAddTask(copy);
     }
     else
@@ -1087,8 +1238,8 @@ void MainWindow::startAutomaticSync()
     m_syncStatusLabel->setText("Поиск общего списка в локальной сети...");
 
     stopDiscoverySearch();
-    m_discoveryClient = new QUdpSocket(this);
-    connect(m_discoveryClient, &QUdpSocket::readyRead,
+    m_discoveryClient = std::make_unique<QUdpSocket>();
+    connect(m_discoveryClient.get(), &QUdpSocket::readyRead,
             this, &MainWindow::onDiscoveryResponse);
 
     m_discoveryClient->writeDatagram(
@@ -1170,16 +1321,15 @@ bool MainWindow::startLocalServer(quint16 port)
         return true;
     }
 
-    m_server = new TaskServer(m_taskManager, this);
-    connect(m_server, &TaskServer::clientConnected,
+    m_server = std::make_unique<TaskServer>(m_taskManager.get());
+    connect(m_server.get(), &TaskServer::clientConnected,
             this, &MainWindow::onServerClientConnected);
-    connect(m_server, &TaskServer::clientDisconnected,
+    connect(m_server.get(), &TaskServer::clientDisconnected,
             this, &MainWindow::onServerClientDisconnected);
 
     if (!m_server->start(port))
     {
-        delete m_server;
-        m_server = nullptr;
+        m_server.reset();
         return false;
     }
 
@@ -1198,15 +1348,13 @@ void MainWindow::stopLocalServer()
     }
 
     m_server->stop();
-    delete m_server;
-    m_server = nullptr;
+    m_server.reset();
     m_connectedClients = 0;
 
     if (m_discoveryServer)
     {
         m_discoveryServer->close();
-        m_discoveryServer->deleteLater();
-        m_discoveryServer = nullptr;
+        m_discoveryServer.reset();
     }
 }
 
@@ -1217,7 +1365,7 @@ void MainWindow::startDiscoveryResponder()
         return;
     }
 
-    m_discoveryServer = new QUdpSocket(this);
+    m_discoveryServer = std::make_unique<QUdpSocket>();
     const bool bound = m_discoveryServer->bind(
         QHostAddress::AnyIPv4,
         DiscoveryPort,
@@ -1225,12 +1373,11 @@ void MainWindow::startDiscoveryResponder()
 
     if (!bound)
     {
-        m_discoveryServer->deleteLater();
-        m_discoveryServer = nullptr;
+        m_discoveryServer.reset();
         return;
     }
 
-    connect(m_discoveryServer, &QUdpSocket::readyRead,
+    connect(m_discoveryServer.get(), &QUdpSocket::readyRead,
             this, &MainWindow::onDiscoveryRequest);
 }
 
@@ -1263,8 +1410,7 @@ void MainWindow::stopDiscoverySearch()
     }
 
     m_discoveryClient->close();
-    m_discoveryClient->deleteLater();
-    m_discoveryClient = nullptr;
+    m_discoveryClient.reset();
 }
 
 void MainWindow::onConnected()

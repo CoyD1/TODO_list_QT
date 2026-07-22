@@ -1,32 +1,33 @@
 #include "message.h"
 
 #include <QJsonDocument>
+#include <memory>
 
 // --- Message factory ---
 
-Message* Message::fromJson(const QJsonObject& json)
+std::unique_ptr<Message> Message::fromJson(const QJsonObject& json)
 {
     const QString typeStr = json["type"].toString();
 
     if (typeStr == "add_task")
     {
-        return new AddTaskMessage(json);
+        return std::make_unique<AddTaskMessage>(json);
     }
     if (typeStr == "remove_task")
     {
-        return new RemoveTaskMessage(json);
+        return std::make_unique<RemoveTaskMessage>(json);
     }
     if (typeStr == "toggle_task")
     {
-        return new ToggleTaskMessage(json);
+        return std::make_unique<ToggleTaskMessage>(json);
     }
     if (typeStr == "edit_task")
     {
-        return new EditTaskMessage(json);
+        return std::make_unique<EditTaskMessage>(json);
     }
     if (typeStr == "sync")
     {
-        return new SyncMessage(json);
+        return std::make_unique<SyncMessage>(json);
     }
 
     return nullptr;

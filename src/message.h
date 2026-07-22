@@ -4,6 +4,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QVector>
+#include <memory>
 #include "task.h"
 
 enum class MessageType
@@ -23,7 +24,7 @@ public:
     virtual MessageType type() const = 0;
     virtual QJsonObject toJson() const = 0;
 
-    static Message* fromJson(const QJsonObject& json);
+    static std::unique_ptr<Message> fromJson(const QJsonObject& json);
 };
 
 class AddTaskMessage : public Message

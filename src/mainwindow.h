@@ -11,6 +11,7 @@
 #include <QDateEdit>
 #include <QPair>
 #include <QUdpSocket>
+#include <memory>
 #include "taskmanager.h"
 #include "serializer.h"
 #include "taskserver.h"
@@ -22,7 +23,7 @@ class MainWindow : public QMainWindow
 
 public:
     explicit MainWindow(QWidget* parent = nullptr);
-    ~MainWindow();
+    ~MainWindow() override;
 
 private slots:
     void addTask();
@@ -51,6 +52,7 @@ private slots:
     void onServerClientDisconnected();
 
 private:
+    void applyAppStyle();
     int selectedTaskIndex() const;
     QVector<QPair<int, Task>> visibleTasks() const;
     static QString priorityText(TaskPriority priority);
@@ -69,9 +71,11 @@ private:
     QString defaultTasksFilePath() const;
     bool loadTasksFromPath(const QString& filePath, bool showMessage);
 
-    TaskManager* m_taskManager;
-    TaskServer* m_server;
-    NetworkClient* m_client;
+    std::unique_ptr<TaskManager> m_taskManager;
+    std::unique_ptr<TaskServer> m_server;
+    std::unique_ptr<NetworkClient> m_client;
+    std::unique_ptr<QUdpSocket> m_discoveryClient;
+    std::unique_ptr<QUdpSocket> m_discoveryServer;
 
     QTableWidget* m_taskTable;
     QLineEdit* m_titleInput;
@@ -103,8 +107,6 @@ private:
     QCheckBox* m_showOverdueOnlyBox;
 
     QLabel* m_syncStatusLabel;
-    QUdpSocket* m_discoveryClient;
-    QUdpSocket* m_discoveryServer;
 
     QString m_syncHost;
     quint16 m_syncPort;

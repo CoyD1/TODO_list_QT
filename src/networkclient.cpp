@@ -4,18 +4,19 @@
 #include <QJsonDocument>
 #include <QDataStream>
 #include <QIODevice>
+#include <memory>
 
 NetworkClient::NetworkClient(QObject* parent)
     : QObject(parent),
-    m_socket(new QTcpSocket(this))
+    m_socket(std::make_unique<QTcpSocket>())
 {
-    connect(m_socket, &QTcpSocket::connected,
+    connect(m_socket.get(), &QTcpSocket::connected,
             this, &NetworkClient::onConnected);
-    connect(m_socket, &QTcpSocket::disconnected,
+    connect(m_socket.get(), &QTcpSocket::disconnected,
             this, &NetworkClient::onDisconnected);
-    connect(m_socket, &QTcpSocket::errorOccurred,
+    connect(m_socket.get(), &QTcpSocket::errorOccurred,
             this, &NetworkClient::onErrorOccurred);
-    connect(m_socket, &QTcpSocket::readyRead,
+    connect(m_socket.get(), &QTcpSocket::readyRead,
             this, &NetworkClient::onReadyRead);
 }
 
@@ -109,7 +110,7 @@ void NetworkClient::onReadyRead()
             continue;
         }
 
-        Message* msg = Message::fromJson(doc.object());
+        std::unique_ptr<Message> msg = Message::fromJson(doc.object());
 
         if (!msg)
         {
@@ -118,11 +119,9 @@ void NetworkClient::onReadyRead()
 
         if (msg->type() == MessageType::Sync)
         {
-            SyncMessage* syncMsg = static_cast<SyncMessage*>(msg);
+            auto* syncMsg = static_cast<SyncMessage*>(msg.get());
             emit tasksReceived(syncMsg->tasks());
         }
-
-        delete msg;
     }
 }
 

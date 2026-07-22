@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QTcpSocket>
 #include <QVector>
+#include <memory>
 #include "task.h"
 
 class NetworkClient : public QObject
@@ -37,7 +38,7 @@ private slots:
 private:
     void sendMessage(const QByteArray& data);
 
-    QTcpSocket* m_socket;
+    std::unique_ptr<QTcpSocket> m_socket;
     QByteArray m_buffer;
 };
 

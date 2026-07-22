@@ -6,6 +6,7 @@
 #include <QTcpSocket>
 #include <QVector>
 #include <QHash>
+#include <memory>
 #include "taskmanager.h"
 
 class TaskServer : public QObject
@@ -36,7 +37,7 @@ private:
     void broadcastMessage(const QByteArray& data);
     void processMessage(const QByteArray& data);
 
-    QTcpServer* m_server;
+    std::unique_ptr<QTcpServer> m_server;
     QVector<QTcpSocket*> m_clients;
     QHash<QTcpSocket*, QByteArray> m_clientBuffers;
     TaskManager* m_taskManager;
